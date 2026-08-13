@@ -57,8 +57,8 @@ struct StashItemRow: View {
             let additive = NSEvent.modifierFlags.contains(.command)
             controller.selectRow(item.id, additive: additive)
             let now = Date()
-            if !additive, let last = lastClickAt, now.timeIntervalSince(last) < 0.35, item.kind != .text {
-                ItemActions.open(item, store: store)
+            if !additive, let last = lastClickAt, now.timeIntervalSince(last) < 0.35 {
+                activate()
                 lastClickAt = nil
             } else {
                 lastClickAt = now
@@ -77,6 +77,11 @@ struct StashItemRow: View {
             controller.copyItems(targets)
         } label: {
             Label(targets.count > 1 ? "复制 \(targets.count) 项" : "复制", systemImage: "doc.on.doc")
+        }
+        if item.kind == .text {
+            Button { controller.previewText(item) } label: {
+                Label("预览原文", systemImage: "eye")
+            }
         }
         if item.kind == .file || item.kind == .image || item.kind == .link {
             Button {
@@ -105,9 +110,23 @@ struct StashItemRow: View {
         }
     }
 
+    /// 双击激活：文字→预览原文；文件/图片/链接→打开。
+    private func activate() {
+        if item.kind == .text {
+            controller.previewText(item)
+        } else {
+            ItemActions.open(item, store: store)
+        }
+    }
+
     @ViewBuilder private var thumbnail: some View {
         if item.kind == .image, let url = store.absoluteURL(for: item) {
             ThumbnailView(url: url)
+        } else if item.kind == .file, let url = store.absoluteURL(for: item) {
+            // 真实 Finder 图标：文件夹显示文件夹图标，各类型文件各显其图标。
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                .resizable()
+                .aspectRatio(contentMode: .fit)
         } else {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.secondary.opacity(0.15))

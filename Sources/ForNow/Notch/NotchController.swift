@@ -18,6 +18,7 @@ final class NotchController: ObservableObject {
     let settings: AppSettings
 
     private let window: NotchWindow
+    private let textPreview = TextPreviewController()
     private var globalClickMonitor: Any?
     private var localKeyMonitor: Any?
     private var toastTask: Task<Void, Never>?
@@ -290,6 +291,13 @@ final class NotchController: ObservableObject {
     func quickLook(_ item: StashItem) {
         guard let url = store.absoluteURL(for: item) else { return }
         QuickLookCoordinator.shared.present([url])
+    }
+
+    /// 预览文字原文（无对应文件的文本项，双击查看）。
+    func previewText(_ item: StashItem) {
+        guard item.kind == .text, let text = item.text, !text.isEmpty else { return }
+        close()
+        textPreview.show(title: item.displayName, text: text)
     }
 
     // MARK: - 反馈
