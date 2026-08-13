@@ -2,9 +2,13 @@
 
 > 文件、文字、链接，先搁这儿。
 
+🌐 **产品主页与免费下载**：[fornow.liveby.app](https://fornow.liveby.app)（macOS 14+ · Developer ID 签名并已公证）
+
 一款 macOS 轻量暂存工具。把 MacBook 屏幕顶部的 Notch（刘海）区域变成随手可用的临时口袋：
 拖文件进 Notch，或点击 Notch 打开面板，再用 `⌘V` 放入剪贴板里的文字、图片、文件或链接；
 需要时把项目拖出到任意支持拖放的应用。所有内容仅保存在本机。
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## 环境要求
 
