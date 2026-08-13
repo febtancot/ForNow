@@ -83,10 +83,22 @@ xcodegen generate                                   # 增删文件后必做
 xcodebuild -scheme ForNow -configuration Debug -derivedDataPath ./build build
 xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build test
 ./Scripts/run.sh                                    # 构建并启动
+./Scripts/make_dmg.sh                               # 构建 Release 并打包 dist/ForNow-<版本>.dmg
 ```
+
+## 分发 / 打包
+
+- `./Scripts/make_dmg.sh` → Release 构建 → **Developer ID 签名（hardened runtime + 时间戳）** → 输出 `dist/ForNow-<版本>.dmg`（内含 App + `/Applications` 软链，拖拽安装）并签名 DMG。`dist/` 不入库。
+- 签名证书：`Developer ID Application: Xueliu Shen (8NF4K823FV)`。
+- **公证**：先一次性存凭据（App Store Connect API Key 方式）
+  `xcrun notarytool store-credentials "ForNowNotary" --key <AuthKey_*.p8> --key-id <KeyID> --issuer <IssuerID>`，
+  再 `NOTARY_PROFILE=ForNowNotary ./Scripts/make_dmg.sh` 自动 submit + staple + 校验。
+  （或 Apple ID 方式：`--apple-id <email> --team-id 8NF4K823FV --password <App 专用密码>`。）
+- 未公证的构建换机首开会被 Gatekeeper 拦（右键「打开」，或 `xattr -dr com.apple.quarantine <App>`）；公证+装订后可直接打开。
 
 ## 阶段变更记录
 
 - **2026-08-13 · MVP 完成**：五阶段（骨架、模型与持久化、Notch 窗口与面板、拖入/粘贴/拖出/项目操作、菜单栏/设置/快捷键）全部落地，38 单测。
 - **2026-08-13 · 交互增强**：刘海整区可点、修复点击不生效、多选 + 复制所选、修复选中延迟。
 - **2026-08-13 · 品牌**：App 图标（彩色口袋插画）、菜单栏图标（SF Symbol，13pt）。
+- **2026-08-13 · 分发**：`Scripts/make_dmg.sh` 全流程（Developer ID 签名 + hardened runtime → DMG → Apple 公证 → staple）；产出首个**已签名且已公证**的 `ForNow-0.1.0.dmg`（`spctl`: Notarized Developer ID）。
