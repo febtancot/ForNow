@@ -29,7 +29,7 @@
 | 点击刘海开合面板 | ✅ | 整个刘海宽度（缺口下方热区）可点；Esc/点外收起 |
 | 拖近自动展开 | ✅ | 拖内容进入刘海热区自动展开，落下入库后自动收起 |
 | `⌘V` 粘贴入库 | ✅ | 优先级 文件>图片>链接>富文本>纯文本（`PasteboardImporter`，有单测）；输入条聚焦时由输入条原生处理 |
-| 快速录入 | ✅ | 面板底部输入条，打开面板即自动聚焦，直接打字，回车入库置顶并收起；纯文字建文字项、http(s) 地址自动建链接项 |
+| 快速录入 | ✅ | 面板底部输入条，打开面板即自动聚焦，直接打字，回车入库置顶并收起；纯文字建文字项、http(s) 地址自动建链接项；文字超长时输入条自动扩展为多行（上限 8 行后内部滚动）|
 | 四类内容 | ✅ | 文件/图片/文字/链接；图标、缩略图、尺寸、摘要、加入时间 |
 | 拖出 | ✅ | 每行 `.onDrag` 提供文件 URL / 文本 / 链接；默认保留原项 |
 | 单选/多选/全选 | ✅ | 单击选中、⌘-单击多选、⌘A 全选；蓝色高亮 |
@@ -52,7 +52,7 @@
 - **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
-- **快速录入（输入条，面板底部）**：面板打开自动聚焦、可直接打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。
+- **快速录入（输入条，面板底部）**：面板打开自动聚焦、可直接打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行文本框（`TextField(axis: .vertical)`，`lineLimit(1...8)`），超长时向上生长，上限后内部滚动。
 - **设置窗口入口**：状态栏菜单「设置…」→ `StatusItemController` 回调 → `AppDelegate.onOpenSettings` → SwiftUI `openSettings` 动作（由 `ForNowApp` 场景内容经 `onChange(of: settingsVersion, initial: true)` 注入；`settingsVersion` 由 `settings.objectWillChange` 驱动递增，保证 body 至少评估一次）。AppKit 的 `showSettingsWindow:` 在新版 SDK 已移除、不可用。
 
 ## 技术架构
@@ -109,4 +109,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-13 · 分发**：`Scripts/make_dmg.sh` 全流程（Developer ID 签名 + hardened runtime → DMG → Apple 公证 → staple）；产出首个**已签名且已公证**的 `ForNow-0.1.0.dmg`（`spctl`: Notarized Developer ID）。
 - **2026-08-13 · 设置窗口修复**：菜单栏「设置…」点击无效 —— 旧 AppKit selector `showSettingsWindow:` 在新版 SDK 的 `NSApplication` 上已移除；改经 SwiftUI `openSettings` 动作桥接打开（`ForNowApp` 场景内容注入 → `AppDelegate` → 状态栏菜单），38 单测通过。
 - **2026-08-13 · 图标与预览**：列表改用真实 Finder 文件/文件夹图标（区分文件夹与类型）；双击文字项弹出原文预览窗口（`TextPreviewController`）。
-- **2026-08-13 · 快速录入**：面板打开自动聚焦输入条，打字回车即入库（文字/链接）；`NotchController` 新增草稿与聚焦状态，全局键盘监听分流 Esc/回车，聚焦时 `⌘V` 等交给输入条原生处理。输入条置于面板底部并加大。
+- **2026-08-13 · 快速录入**：面板打开自动聚焦输入条，打字回车即入库（文字/链接）；`NotchController` 新增草稿与聚焦状态，全局键盘监听分流 Esc/回车，聚焦时 `⌘V` 等交给输入条原生处理。输入条置于面板底部并加大，后改为多行自动扩展（上限 8 行）。

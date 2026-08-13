@@ -131,13 +131,15 @@ struct QuickEntryField: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: "square.and.pencil")
                 .foregroundStyle(.secondary)
                 .font(.system(size: 13))
-            TextField("快速录入：打字后回车暂存", text: $controller.draft)
+                .padding(.top, 3)
+            TextField("快速录入：打字后回车暂存", text: $controller.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
+                .lineLimit(1...8)
                 .focused($focused)
                 .onSubmit { controller.submitDraft() }
             if !controller.draft.isEmpty {
@@ -146,12 +148,14 @@ struct QuickEntryField: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .padding(.top, 3)
                 .help("清空输入")
                 .accessibilityLabel("清空输入")
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .animation(.easeInOut(duration: 0.15), value: controller.draft)
         .onAppear {
             focused = true
             controller.isTyping = true
