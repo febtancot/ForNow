@@ -10,6 +10,8 @@ final class StatusItemController: NSObject {
 
     /// 由 AppDelegate 注入：切换暂存面板显示。
     var onTogglePanel: () -> Void = {}
+    /// 由 AppDelegate 注入：打开设置窗口。
+    var onOpenSettings: () -> Void = {}
 
     init(store: StashStore, settings: AppSettings) {
         self.store = store
@@ -39,8 +41,7 @@ final class StatusItemController: NSObject {
     }
 
     @objc private func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        onOpenSettings()
     }
 }
 
