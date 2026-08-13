@@ -13,12 +13,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotKeyManager = HotKeyManager()
     private var cancellables: Set<AnyCancellable> = []
 
+    /// 由 ForNowApp 的场景内容注入：打开设置窗口（SwiftUI `openSettings` 动作）。
+    var onOpenSettings: (() -> Void)?
+    /// 设置变化时递增，供 ForNowApp 的 body 读取以维持注入。
+    var settingsVersion = 0
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
         let notch = NotchController(store: store, settings: settings)
         let status = StatusItemController(store: store, settings: settings)
         status.onTogglePanel = { [weak notch] in notch?.toggle() }
+        status.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
 
         self.notchController = notch
         self.statusController = status
@@ -36,6 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 登录时启动：随开关变化生效。
         settings.$launchAtLogin
             .sink { LoginItem.setEnabled($0) }
+            .store(in: &cancellables)
+
+        // 让 ForNowApp 的 body 在设置变化时重估（依赖 settingsVersion）。
+        settings.objectWillChange
+            .sink { [weak self] _ in self?.settingsVersion += 1 }
             .store(in: &cancellables)
     }
 }
