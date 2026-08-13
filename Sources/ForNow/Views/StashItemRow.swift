@@ -12,6 +12,17 @@ struct StashItemRow: View {
 
     private var isSelected: Bool { controller.isSelected(item.id) }
 
+    /// 类型标签：`.file` 若实际是目录则显示"文件夹"。
+    private var kindLabel: String {
+        if item.kind == .file, let url = store.absoluteURL(for: item) {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                return "文件夹"
+            }
+        }
+        return item.kind.localizedName
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             thumbnail
@@ -67,7 +78,7 @@ struct StashItemRow: View {
         .onDrag { ItemActions.dragProvider(item, store: store) }
         .contextMenu { contextMenu }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.kind.localizedName)，\(item.displayName)\(isSelected ? "，已选中" : "")")
+        .accessibilityLabel("\(kindLabel)，\(item.displayName)\(isSelected ? "，已选中" : "")")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
@@ -138,7 +149,7 @@ struct StashItemRow: View {
     }
 
     private var subtitle: String {
-        var parts: [String] = [item.kind.localizedName]
+        var parts: [String] = [kindLabel]
         if let dims = item.pixelSizeText {
             parts.append(dims)
         } else if let size = item.byteSizeText {
