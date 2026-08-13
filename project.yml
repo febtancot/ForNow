@@ -1,0 +1,76 @@
+name: ForNow
+options:
+  bundleIdPrefix: com.fornow
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+fileGroups:
+  - IMPLEMENTATION_PLAN.md
+  - README.md
+  - Notch_Stash_PRD.md
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: "NO"
+    ALWAYS_SEARCH_USER_PATHS: "NO"
+    CLANG_ENABLE_MODULES: "YES"
+targets:
+  ForNowKit:
+    type: library.static
+    platform: macOS
+    sources:
+      - Sources/ForNowKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fornow.ForNowKit
+        SKIP_INSTALL: "YES"
+      configs:
+        Debug:
+          ENABLE_TESTABILITY: "YES"
+
+  ForNow:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/ForNow
+    dependencies:
+      - target: ForNowKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fornow.app
+        INFOPLIST_FILE: Sources/ForNow/Support/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/ForNow/Support/ForNow.entitlements
+        COMBINE_HIDPI_IMAGES: "YES"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  ForNowKitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/ForNowKitTests
+    dependencies:
+      - target: ForNowKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fornow.ForNowKitTests
+        GENERATE_INFOPLIST_FILE: "YES"
+
+schemes:
+  ForNow:
+    build:
+      targets:
+        ForNow: all
+        ForNowKitTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - ForNowKitTests

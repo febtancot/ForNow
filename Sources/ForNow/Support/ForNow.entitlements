@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- MVP 不启用沙箱：简化文件访问、Apple 事件与全局快捷键。上架前再补 sandbox。 -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+</dict>
+</plist>
