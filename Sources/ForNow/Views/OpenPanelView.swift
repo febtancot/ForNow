@@ -11,11 +11,11 @@ struct OpenPanelView: View {
         VStack(spacing: 0) {
             header
             Divider().opacity(0.3)
-            QuickEntryField()
-            Divider().opacity(0.3)
             content
             Divider().opacity(0.3)
             footer
+            Divider().opacity(0.3)
+            QuickEntryField()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(PanelBackground(isDropTargeted: controller.isDropTargeted))
@@ -134,10 +134,10 @@ struct QuickEntryField: View {
         HStack(spacing: 8) {
             Image(systemName: "square.and.pencil")
                 .foregroundStyle(.secondary)
-                .font(.system(size: 12))
+                .font(.system(size: 13))
             TextField("快速录入：打字后回车暂存", text: $controller.draft)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .focused($focused)
                 .onSubmit { controller.submitDraft() }
             if !controller.draft.isEmpty {
@@ -150,8 +150,8 @@ struct QuickEntryField: View {
                 .accessibilityLabel("清空输入")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .onAppear {
             focused = true
             controller.isTyping = true
