@@ -13,6 +13,10 @@ final class NotchController: ObservableObject {
     @Published var toast: String?
     /// 当前选中的项目 id（支持单选/多选/全选）。
     @Published var selection: Set<UUID> = []
+    /// 快速录入输入条的草稿。放控制器里以便全局键盘处理（回车提交、Esc 清空）。
+    @Published var draft = ""
+    /// 输入条是否持有键盘焦点。聚焦时 ⌘V/⌘A/Delete 等交给文本框原生处理。
+    @Published var isTyping = false
 
     let store: StashStore
     let settings: AppSettings
@@ -62,6 +66,8 @@ final class NotchController: ObservableObject {
         isOpen = false
         isDropTargeted = false
         openedByDrag = false
+        draft = ""
+        isTyping = false
         selection.removeAll()
         removeMonitors()
         setFrame(closedFrame(), animate: settings.animations)
@@ -165,13 +171,25 @@ final class NotchController: ObservableObject {
             self?.close()
         }
         // 面板键盘操作：Esc 清选择/收起、⌘V 粘贴、⌘C 复制所选、⌘A 全选、Delete 删除所选。
+        // 输入条聚焦时，除 Esc 和回车外的按键都交给文本框原生处理。
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            if event.keyCode == 53 { // Esc：先清选择，否则收起
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if self.isTyping {
+                if event.keyCode == 53, flags.isEmpty { // Esc：退出输入模式
+                    self.escapeDraft()
+                    return nil
+                }
+                if event.keyCode == 36, flags.isEmpty { // 回车：提交录入
+                    self.submitDraft()
+                    return nil
+                }
+                return event // 其余（含 ⌘V 粘贴进输入条）由文本框处理
+            }
+            if event.keyCode == 53, flags.isEmpty { // Esc：先清选择，否则收起
                 if self.selection.isEmpty { self.close() } else { self.clearSelection() }
                 return nil
             }
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if flags == .command {
                 switch event.keyCode {
                 case 9: self.handlePaste(); return nil   // V
@@ -283,6 +301,33 @@ final class NotchController: ObservableObject {
         case .link: return "已暂存链接"
         case .text: return "已暂存文字"
         case .empty: return ""
+        }
+    }
+
+    // MARK: - 快速录入
+
+    /// 提交输入条草稿：非空白文字入库、置顶；若是链接则按链接建项，随后收起。
+    func submitDraft() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            close()
+            return
+        }
+        if let url = URL(string: trimmed), url.scheme?.lowercased().hasPrefix("http") == true {
+            store.addLink(urlString: trimmed, title: nil)
+        } else {
+            store.addText(draft)
+        }
+        feedback("已录入")
+        close()
+    }
+
+    /// Esc 在输入模式下：有草稿先清空，否则收起。
+    func escapeDraft() {
+        if draft.isEmpty {
+            close()
+        } else {
+            draft = ""
         }
     }
 

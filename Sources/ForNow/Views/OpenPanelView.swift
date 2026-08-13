@@ -14,6 +14,8 @@ struct OpenPanelView: View {
             content
             Divider().opacity(0.3)
             footer
+            Divider().opacity(0.3)
+            QuickEntryField()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(PanelBackground(isDropTargeted: controller.isDropTargeted))
@@ -123,6 +125,46 @@ struct OpenPanelView: View {
     }
 }
 
+/// 快速录入输入条：打开面板即自动聚焦，直接打字，回车入库。
+struct QuickEntryField: View {
+    @EnvironmentObject private var controller: NotchController
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "square.and.pencil")
+                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .padding(.top, 3)
+            TextField("快速录入：打字后回车暂存", text: $controller.draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .lineLimit(1...8)
+                .focused($focused)
+                .onSubmit { controller.submitDraft() }
+            if !controller.draft.isEmpty {
+                Button { controller.draft = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 3)
+                .help("清空输入")
+                .accessibilityLabel("清空输入")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .animation(.easeInOut(duration: 0.15), value: controller.draft)
+        .onAppear {
+            focused = true
+            controller.isTyping = true
+        }
+        .onDisappear { controller.isTyping = false }
+        .onChange(of: focused) { controller.isTyping = focused }
+    }
+}
+
 /// 克制的操作反馈提示。
 struct ToastView: View {
     let text: String
@@ -149,7 +191,7 @@ struct EmptyStateView: View {
                 .foregroundStyle(.secondary)
             Text("先搁这儿")
                 .font(.headline)
-            Text("拖入文件，或按 ⌘V 粘贴文字、图片、链接")
+            Text("直接打字录入，或拖入文件、按 ⌘V 粘贴")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
