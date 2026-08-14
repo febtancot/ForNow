@@ -126,8 +126,9 @@ struct OpenPanelView: View {
 }
 
 /// 快速录入输入条：打开面板即自动聚焦，直接打字，回车入库。
+/// 绑定独立的 `DraftModel`，打字/粘贴只重绘本视图，不触发面板整体重渲染。
 struct QuickEntryField: View {
-    @EnvironmentObject private var controller: NotchController
+    @EnvironmentObject private var draftModel: DraftModel
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -136,14 +137,14 @@ struct QuickEntryField: View {
                 .foregroundStyle(.secondary)
                 .font(.system(size: 13))
                 .padding(.top, 3)
-            TextField("快速录入：打字后回车暂存", text: $controller.draft, axis: .vertical)
+            TextField("快速录入：打字后回车暂存", text: $draftModel.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...8)
                 .focused($focused)
-                .onSubmit { controller.submitDraft() }
-            if !controller.draft.isEmpty {
-                Button { controller.draft = "" } label: {
+                .onSubmit { draftModel.onSubmit?() }
+            if !draftModel.draft.isEmpty {
+                Button { draftModel.draft = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.tertiary)
                 }
@@ -155,13 +156,12 @@ struct QuickEntryField: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .animation(.easeInOut(duration: 0.15), value: controller.draft)
         .onAppear {
             focused = true
-            controller.isTyping = true
+            draftModel.isTyping = true
         }
-        .onDisappear { controller.isTyping = false }
-        .onChange(of: focused) { controller.isTyping = focused }
+        .onDisappear { draftModel.isTyping = false }
+        .onChange(of: focused) { draftModel.isTyping = focused }
     }
 }
 

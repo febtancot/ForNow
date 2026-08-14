@@ -2,6 +2,15 @@ import AppKit
 
 /// 承载暂存面板的无边框浮动面板：不激活应用即可接收键盘（Cmd+V / Esc），跨 Space 与全屏可见。
 final class NotchWindow: NSPanel {
+    /// 面板打开时内容的理想高度。宽度保持当前值，仅调整高度。
+    /// 输入条多行扩展时由此驱动窗口长高（避免 SwiftUI 逐帧动画大段文字重排）。
+    var contentHeight: CGFloat = 0 {
+        didSet {
+            guard contentHeight != oldValue else { return }
+            setContentSize(NSSize(width: frame.width, height: contentHeight))
+        }
+    }
+
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 190, height: 30),
                    styleMask: [.borderless, .nonactivatingPanel],

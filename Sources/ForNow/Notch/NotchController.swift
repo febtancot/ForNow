@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import ForNowKit
+import Combine
 
 /// 管理 Notch 暂存面板的显示、开合、定位与全局事件监听。
 @MainActor
@@ -13,10 +14,9 @@ final class NotchController: ObservableObject {
     @Published var toast: String?
     /// 当前选中的项目 id（支持单选/多选/全选）。
     @Published var selection: Set<UUID> = []
-    /// 快速录入输入条的草稿。放控制器里以便全局键盘处理（回车提交、Esc 清空）。
-    @Published var draft = ""
-    /// 输入条是否持有键盘焦点。聚焦时 ⌘V/⌘A/Delete 等交给文本框原生处理。
-    @Published var isTyping = false
+
+    /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
+    let draftModel = DraftModel()
 
     let store: StashStore
     let settings: AppSettings
@@ -26,6 +26,7 @@ final class NotchController: ObservableObject {
     private var globalClickMonitor: Any?
     private var localKeyMonitor: Any?
     private var toastTask: Task<Void, Never>?
+    private var cancellables: Set<AnyCancellable> = []
     /// 面板是否因拖入而展开（用于拖入落下后自动收起）。
     private var openedByDrag = false
 
@@ -35,11 +36,21 @@ final class NotchController: ObservableObject {
         self.store = store
         self.settings = settings
         self.window = NotchWindow()
+        window.contentHeight = layoutSize(for: "").height
+
+        draftModel.onSubmit = { [weak self] in self?.submitDraft() }
+        draftModel.draftDidChange
+            .sink { [weak self] in
+                guard let self else { return }
+                self.window.contentHeight = self.fieldHeight()
+            }
+            .store(in: &cancellables)
 
         let root = NotchRootView()
             .environmentObject(store)
             .environmentObject(settings)
             .environmentObject(self)
+            .environmentObject(draftModel)
         let hosting = NotchHostingView(rootView: AnyView(root))
         hosting.autoresizingMask = [.width, .height]
         window.contentView = hosting
@@ -66,10 +77,11 @@ final class NotchController: ObservableObject {
         isOpen = false
         isDropTargeted = false
         openedByDrag = false
-        draft = ""
-        isTyping = false
-        selection.removeAll()
+        // 先移除键盘监听，避免清空草稿触发输入条重绘时仍在拦截按键。
         removeMonitors()
+        draftModel.draft = ""
+        draftModel.isTyping = false
+        selection.removeAll()
         setFrame(closedFrame(), animate: settings.animations)
         window.orderFrontRegardless()
     }
@@ -157,7 +169,7 @@ final class NotchController: ObservableObject {
     }
 
     private func closedFrame() -> CGRect { metrics().closedFrame() }
-    private func openFrame() -> CGRect { metrics().openFrame(width: openSize.width, height: openSize.height) }
+    private func openFrame() -> CGRect { metrics().openFrame(width: openSize.width, height: window.contentHeight) }
 
     private func setFrame(_ frame: CGRect, animate: Bool) {
         window.setFrame(frame, display: true, animate: animate)
@@ -175,7 +187,7 @@ final class NotchController: ObservableObject {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if self.isTyping {
+            if self.draftModel.isTyping {
                 if event.keyCode == 53, flags.isEmpty { // Esc：退出输入模式
                     self.escapeDraft()
                     return nil
@@ -306,9 +318,14 @@ final class NotchController: ObservableObject {
 
     // MARK: - 快速录入
 
+    /// 输入条当前高度（草稿为空时取单行高度）。供窗口高度驱动用。
+    private func fieldHeight() -> CGFloat {
+        layoutSize(for: draftModel.draft).height
+    }
+
     /// 提交输入条草稿：非空白文字入库、置顶；若是链接则按链接建项，随后收起。
     func submitDraft() {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = draftModel.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             close()
             return
@@ -316,7 +333,7 @@ final class NotchController: ObservableObject {
         if let url = URL(string: trimmed), url.scheme?.lowercased().hasPrefix("http") == true {
             store.addLink(urlString: trimmed, title: nil)
         } else {
-            store.addText(draft)
+            store.addText(draftModel.draft)
         }
         feedback("已录入")
         close()
@@ -324,11 +341,23 @@ final class NotchController: ObservableObject {
 
     /// Esc 在输入模式下：有草稿先清空，否则收起。
     func escapeDraft() {
-        if draft.isEmpty {
+        if draftModel.draft.isEmpty {
             close()
         } else {
-            draft = ""
+            draftModel.draft = ""
         }
+    }
+
+    // MARK: - 布局测算
+
+    /// 面板当前内容布局尺寸（固定宽度、按输入条草稿动态高度）。
+    private func layoutSize(for draft: String) -> CGSize {
+        let field = MeasuredField(text: draft)
+        // 输入条可用宽度 = 面板宽 − 左右 padding(28) − 图标(21) − 间距/清空按钮预留(11)。
+        // 取略窄值，窗口高度只多不少。
+        let size = field.measure(width: 324)
+        let clamped = min(max(size.height, 31), 140)
+        return CGSize(width: 384, height: 470 + clamped - 31)
     }
 
     // MARK: - 快速预览
@@ -369,5 +398,25 @@ final class NotchController: ObservableObject {
             try? await Task.sleep(nanoseconds: 1_100_000_000)
             self?.close()
         }
+    }
+}
+
+/// 布局测算辅助：只做尺寸测量、不参与渲染的文本框。
+@MainActor
+private struct MeasuredField: View {
+    let text: String
+
+    func measure(width: CGFloat) -> CGSize {
+        let host = NSHostingController(rootView: self.frame(width: width))
+        host.view.layoutSubtreeIfNeeded()
+        let size = host.view.fittingSize
+        return CGSize(width: width, height: size.height)
+    }
+
+    var body: some View {
+        Text(text.isEmpty ? " " : text)
+            .font(.system(size: 14))
+            .lineLimit(1...8)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
