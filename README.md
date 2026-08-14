@@ -48,10 +48,10 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' test
 ## 自动更新
 
 应用内置 [Sparkle 2](https://sparkle-project.org/) 自动更新：启动时检查 + 每日最多一次，
-菜单栏「检查更新…」手动触发。更新源托管在 GitHub Pages：
+菜单栏「检查更新…」手动触发。更新源托管在 Cloudflare Pages（产品站同域）：
 
 ```
-https://febtancot.github.io/ForNow/updates/appcast.xml
+https://fornow.liveby.app/updates/appcast.xml
 ```
 
 本地调试可临时覆盖 feed（用后记得删除）：
@@ -68,24 +68,24 @@ defaults delete com.fornow.app SULastCheckTime   # 立即触发下次检查
 1. **生成更新签名密钥**：`~/Library/Caches/ForNow/sparkle-2.9.5/bin/generate_keys`
    （私钥入 Keychain；把打印的公钥填进 app `Info.plist` 的 `SUPublicEDKey`），
    并离线备份私钥：`generate_keys -x ~/Documents/fornow-sparkle-private-key.txt`（绝不进 git）。
-2. **启用 GitHub Pages**（仓库 Settings → Pages → Source 选 `gh-pages` 分支根目录；
-   或 `gh api repos/febtancot/ForNow/pages -X POST -f "source[branch]=gh-pages" -f "source[path]=/"`）。
-3. Sparkle 命令行工具由 `Scripts/make_release.sh` 自动下载到 `~/Library/Caches/ForNow/sparkle-2.9.5/`。
+2. **wrangler 登录**：`npx wrangler whoami`（Cloudflare Pages 项目 `fornow` 绑定 fornow.liveby.app）。
+3. **产品站点源码**在 `~/AI projects/fornow_site/`（发布脚本从那里组装部署目录）。
+4. Sparkle 命令行工具由 `Scripts/make_release.sh` 自动下载到 `~/Library/Caches/ForNow/sparkle-2.9.5/`。
 
 **每次发布：**
 
 ```bash
 # 1. project.yml 升 MARKETING_VERSION / CURRENT_PROJECT_VERSION（只升不降）
-# 2. （可选）手写发布说明 updates/ForNow-<版本>.md；不写则脚本生成占位
+# 2. 在站点源码 updates/ForNow-<版本>.md 写发布说明（appcast 自动嵌入）；
+#    站点 changelog 新条目在 index.html 人工添加
 # 3. 一条命令发布（首次跑会弹 Keychain 授权框，选“始终允许”）
 NOTARY_PROFILE=ForNowNotary ./Scripts/make_release.sh
-#    SKIP_GITHUB_RELEASE=1 可跳过 GitHub Release，只推更新源
-# 4. 验证：curl https://febtancot.github.io/ForNow/updates/appcast.xml
-#    （Pages 首次发布有 1–10 分钟延迟）
+# 4. 验证：curl https://fornow.liveby.app/updates/appcast.xml
+#    （CDN 缓存最多 5 分钟刷新）
 ```
 
 **三条铁律：**
 
-- **永不删除** `gh-pages` 分支上 `updates/` 与 `old_updates/` 里的历史 DMG（增量更新 `.delta` 依赖它们）。
+- **永不删除**站点 `updates/` 里的历史 DMG（增量更新 `.delta` 依赖它们）。
 - **appcast.xml 只由脚本生成**，不做手工修改（它带 EdDSA 签名，手改即失效）。
 - **同名版本只发布一次**（重复发布会破坏签名/增量更新/客户端缓存）。

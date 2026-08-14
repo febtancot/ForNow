@@ -33,7 +33,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://febtancot.github.io/ForNow/updates/appcast.xml</string>
+	<string>https://fornow.liveby.app/updates/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>9cBTgMwr1qC0g8EMWxFpXpBFoLddCqi4tNWcO3dJu2I=</string>
 </dict>

@@ -14,9 +14,6 @@ dist/
 AuthKey_*.p8
 fornow-sparkle-private-key*
 
-# Sparkle release working tree
-.gh-pages/
-
 # macOS
 .DS_Store
 

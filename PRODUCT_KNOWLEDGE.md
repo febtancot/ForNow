@@ -105,7 +105,7 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
   再 `NOTARY_PROFILE=ForNowNotary ./Scripts/make_dmg.sh` 自动 submit + staple + 校验。
   （或 Apple ID 方式：`--apple-id <email> --team-id 8NF4K823FV --password <App 专用密码>`。）
 - 未公证的构建换机首开会被 Gatekeeper 拦（右键「打开」，或 `xattr -dr com.apple.quarantine <App>`）；公证+装订后可直接打开。
-- **自动更新（Sparkle 2.9.5）**：更新源 `https://febtancot.github.io/ForNow/updates/appcast.xml`（gh-pages 分支，DMG + appcast + delta + 同名 .md 发布说明）；`./Scripts/make_release.sh` 全流程（构建公证 → 进 gh-pages worktree → generate_appcast 签名 → 推送 → 可选 GitHub Release，`SKIP_GITHUB_RELEASE=1` 跳过）。铁律：旧 DMG 永不删、appcast 只由脚本生成、同名版本只发一次。
+- **自动更新（Sparkle 2.9.5）**：更新源 `https://fornow.liveby.app/updates/appcast.xml`（Cloudflare Pages 项目 `fornow`，与产品站同域；DMG + appcast + delta + 同名 .md 发布说明；站点源码在 `~/AI projects/fornow_site/`，`_headers` 对 appcast 短缓存 5 分钟、对 DMG/delta immutable）；`./Scripts/make_release.sh` 全流程（构建公证 → 组装站点 + updates → generate_appcast 签名 → 更新首页下载链接 → wrangler 部署 → 落回站点源码目录）。铁律：旧 DMG 永不删、appcast 只由脚本生成、同名版本只发一次。
 
 ## 阶段变更记录
 
@@ -120,3 +120,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-14 · 输入性能二轮修复**：粘贴仍有卡顿——测量用 SwiftUI `Text` 全文排版，每次击键在主线程做 O(全文) 布局。改为 `DraftTextMetrics`（TextKit 惰性排版、最多排 8 行，另对超长文本截断测量前缀，成本与行长成正比）；高度测量节流（每秒一次、值不变不发布）。同时输入条改为 ScrollView 定高滚动（系统可见滚动条），去掉 `lineLimit(1...8)` 内部滚动。新增 `DraftTextMetricsTests`（5 例：截断契约、空文单行、换行、封顶 8 行、宽度无关），45 单测绿。
 - **2026-08-14 · 长文本提交复位修复**：长文本提交后重开面板，输入条高度停在多行上限（铅笔图标悬空未归位）——根因是节流把"清空草稿→单行"的最终测量吞掉，且事件先于测量发出。修复：清空后测量不受节流限制、事件改在测量之后发送（订阅方读到的总是最新高度）、窗口高度 sink 加 `isOpen` 守卫（收起后不再被驱动）。新增 2 例回归测试，47 单测绿。
 - **2026-08-14 · v0.2.0 发布**：版本升至 0.2.0（`MARKETING_VERSION`，build 2）；打包签名 + 公证 + 装订的 `dist/ForNow-0.2.0.dmg`（`spctl`: Notarized Developer ID），供分发。
+- **2026-08-14 · v0.3.0 自动更新**：Sparkle 2.9.5 经 SPM 接入（启动 + 每日一次自动检查，菜单栏「检查更新…」，设置「更新」页）；更新源托管于产品站同域 Cloudflare Pages（`fornow.liveby.app/updates/appcast.xml`，`_headers` 对 appcast 短缓存 5 分钟）；EdDSA 私钥入 Keychain 并离线备份；`make_dmg.sh` 改 `codesign --deep`（Sparkle 嵌套二进制重签，公证要求）；新增 `Scripts/make_release.sh`（构建公证 → generate_appcast 签名 → wrangler 部署 → 落回站点源码）。踩坑：Sparkle 拒绝 `file://` feed（错误 2001）；wrangler 从 git 仓库运行会把当前分支当预览部署，生产部署须从非 git 临时目录 `--branch main`。47 单测绿；公证 Accepted；生产 feed 实测通过。
