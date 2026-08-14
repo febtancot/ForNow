@@ -52,7 +52,7 @@
 - **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
-- **快速录入（输入条，面板底部）**：面板打开自动聚焦、可直接打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行文本框（`TextField(axis: .vertical)`，`lineLimit(1...8)`），超长时向上生长，上限后内部滚动。
+- **快速录入（输入条，面板底部）**：面板打开自动聚焦、可直接打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行输入区（上限 8 行，超出后**定高滚动、显示滚动条**）。**状态隔离与高度测量**：草稿/聚焦状态在独立 `DraftModel`（仅输入条观察），打字/粘贴只重绘输入条；高度测量用 `DraftTextMetrics`（TextKit 惰性排版、只排前 8 行，成本与行长成正比、与全文长度无关，另对超长文本截断测量前缀），窗口高度由合并去抖的 `draftDidChange` 事件驱动 `NotchWindow.contentHeight` 直接调整，粘贴大段文字不卡顿、无逐帧动画重排。
 - **设置窗口入口**：状态栏菜单「设置…」→ `StatusItemController` 回调 → `AppDelegate.onOpenSettings` → SwiftUI `openSettings` 动作（由 `ForNowApp` 场景内容经 `onChange(of: settingsVersion, initial: true)` 注入；`settingsVersion` 由 `settings.objectWillChange` 驱动递增，保证 body 至少评估一次）。AppKit 的 `showSettingsWindow:` 在新版 SDK 已移除、不可用。
 
 ## 技术架构
@@ -60,8 +60,8 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：38 个单测，无需 app host。
-- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）。
+- `ForNowKitTests`：47 个单测，无需 app host。
+- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）。
 
 ## 关键决策与取舍
 
@@ -73,7 +73,7 @@
 
 ## 当前状态与验证
 
-- 构建绿、38 单测绿、`.app` 正常启动为菜单栏程序、无崩溃/错误日志。
+- 构建绿、47 单测绿、`.app` 正常启动为菜单栏程序、无崩溃/错误日志。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -110,3 +110,6 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-13 · 设置窗口修复**：菜单栏「设置…」点击无效 —— 旧 AppKit selector `showSettingsWindow:` 在新版 SDK 的 `NSApplication` 上已移除；改经 SwiftUI `openSettings` 动作桥接打开（`ForNowApp` 场景内容注入 → `AppDelegate` → 状态栏菜单），38 单测通过。
 - **2026-08-13 · 图标与预览**：列表改用真实 Finder 文件/文件夹图标（区分文件夹与类型）；双击文字项弹出原文预览窗口（`TextPreviewController`）。
 - **2026-08-13 · 快速录入**：面板打开自动聚焦输入条，打字回车即入库（文字/链接）；`NotchController` 新增草稿与聚焦状态，全局键盘监听分流 Esc/回车，聚焦时 `⌘V` 等交给输入条原生处理。输入条置于面板底部并加大，后改为多行自动扩展（上限 8 行）。
+- **2026-08-14 · 输入性能修复**：输入条粘贴大段文字卡顿——根因是草稿放在 `NotchController` 上，每次内容变化都广播触发整个面板重渲染（列表每行文件系统查询、底部统计递归磁盘扫描），且 `.animation(value:)` 对多行扩展逐帧动画重排大文本。将草稿/聚焦状态迁入独立 `DraftModel`（仅输入条观察，`@Published` 只影响该小组件）；窗口高度改由 `draftDidChange` 事件（异步合并去抖）驱动 `NotchWindow.contentHeight` 直接调整（`NSHostingController` 轻量测量，替代 SwiftUI 逐帧几何回传）；去除输入条内容动画。新增 `DraftModelTests`（2 例：同循环合并为一次事件、相同值不重复触发），40 单测绿。
+- **2026-08-14 · 输入性能二轮修复**：粘贴仍有卡顿——测量用 SwiftUI `Text` 全文排版，每次击键在主线程做 O(全文) 布局。改为 `DraftTextMetrics`（TextKit 惰性排版、最多排 8 行，另对超长文本截断测量前缀，成本与行长成正比）；高度测量节流（每秒一次、值不变不发布）。同时输入条改为 ScrollView 定高滚动（系统可见滚动条），去掉 `lineLimit(1...8)` 内部滚动。新增 `DraftTextMetricsTests`（5 例：截断契约、空文单行、换行、封顶 8 行、宽度无关），45 单测绿。
+- **2026-08-14 · 长文本提交复位修复**：长文本提交后重开面板，输入条高度停在多行上限（铅笔图标悬空未归位）——根因是节流把"清空草稿→单行"的最终测量吞掉，且事件先于测量发出。修复：清空后测量不受节流限制、事件改在测量之后发送（订阅方读到的总是最新高度）、窗口高度 sink 加 `isOpen` 守卫（收起后不再被驱动）。新增 2 例回归测试，47 单测绿。

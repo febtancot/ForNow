@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import ForNowKit
+import Combine
 
 /// 管理 Notch 暂存面板的显示、开合、定位与全局事件监听。
 @MainActor
@@ -13,10 +14,9 @@ final class NotchController: ObservableObject {
     @Published var toast: String?
     /// 当前选中的项目 id（支持单选/多选/全选）。
     @Published var selection: Set<UUID> = []
-    /// 快速录入输入条的草稿。放控制器里以便全局键盘处理（回车提交、Esc 清空）。
-    @Published var draft = ""
-    /// 输入条是否持有键盘焦点。聚焦时 ⌘V/⌘A/Delete 等交给文本框原生处理。
-    @Published var isTyping = false
+
+    /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
+    let draftModel = DraftModel()
 
     let store: StashStore
     let settings: AppSettings
@@ -26,6 +26,7 @@ final class NotchController: ObservableObject {
     private var globalClickMonitor: Any?
     private var localKeyMonitor: Any?
     private var toastTask: Task<Void, Never>?
+    private var cancellables: Set<AnyCancellable> = []
     /// 面板是否因拖入而展开（用于拖入落下后自动收起）。
     private var openedByDrag = false
 
@@ -35,11 +36,21 @@ final class NotchController: ObservableObject {
         self.store = store
         self.settings = settings
         self.window = NotchWindow()
+        window.contentHeight = Self.openHeight(fieldHeight: DraftTextMetrics.lineHeight)
+
+        draftModel.onSubmit = { [weak self] in self?.submitDraft() }
+        draftModel.draftDidChange
+            .sink { [weak self] in
+                guard let self, self.isOpen else { return }
+                self.window.contentHeight = self.openHeight()
+            }
+            .store(in: &cancellables)
 
         let root = NotchRootView()
             .environmentObject(store)
             .environmentObject(settings)
             .environmentObject(self)
+            .environmentObject(draftModel)
         let hosting = NotchHostingView(rootView: AnyView(root))
         hosting.autoresizingMask = [.width, .height]
         window.contentView = hosting
@@ -66,10 +77,11 @@ final class NotchController: ObservableObject {
         isOpen = false
         isDropTargeted = false
         openedByDrag = false
-        draft = ""
-        isTyping = false
-        selection.removeAll()
+        // 先移除键盘监听，避免清空草稿触发输入条重绘时仍在拦截按键。
         removeMonitors()
+        draftModel.draft = ""
+        draftModel.isTyping = false
+        selection.removeAll()
         setFrame(closedFrame(), animate: settings.animations)
         window.orderFrontRegardless()
     }
@@ -157,7 +169,18 @@ final class NotchController: ObservableObject {
     }
 
     private func closedFrame() -> CGRect { metrics().closedFrame() }
-    private func openFrame() -> CGRect { metrics().openFrame(width: openSize.width, height: openSize.height) }
+    private func openFrame() -> CGRect { metrics().openFrame(width: openSize.width, height: window.contentHeight) }
+
+    /// 面板打开时按输入条高度计算的内容高度。
+    private func openHeight() -> CGFloat {
+        Self.openHeight(fieldHeight: draftModel.fieldContentHeight)
+    }
+
+    private static func openHeight(fieldHeight: CGFloat) -> CGFloat {
+        let clamped = min(max(fieldHeight, DraftTextMetrics.lineHeight),
+                          DraftTextMetrics.lineHeight * 8)
+        return 470 + clamped - DraftTextMetrics.lineHeight
+    }
 
     private func setFrame(_ frame: CGRect, animate: Bool) {
         window.setFrame(frame, display: true, animate: animate)
@@ -175,7 +198,7 @@ final class NotchController: ObservableObject {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if self.isTyping {
+            if self.draftModel.isTyping {
                 if event.keyCode == 53, flags.isEmpty { // Esc：退出输入模式
                     self.escapeDraft()
                     return nil
@@ -308,7 +331,7 @@ final class NotchController: ObservableObject {
 
     /// 提交输入条草稿：非空白文字入库、置顶；若是链接则按链接建项，随后收起。
     func submitDraft() {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = draftModel.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             close()
             return
@@ -316,7 +339,7 @@ final class NotchController: ObservableObject {
         if let url = URL(string: trimmed), url.scheme?.lowercased().hasPrefix("http") == true {
             store.addLink(urlString: trimmed, title: nil)
         } else {
-            store.addText(draft)
+            store.addText(draftModel.draft)
         }
         feedback("已录入")
         close()
@@ -324,10 +347,10 @@ final class NotchController: ObservableObject {
 
     /// Esc 在输入模式下：有草稿先清空，否则收起。
     func escapeDraft() {
-        if draft.isEmpty {
+        if draftModel.draft.isEmpty {
             close()
         } else {
-            draft = ""
+            draftModel.draft = ""
         }
     }
 
