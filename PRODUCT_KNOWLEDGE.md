@@ -44,7 +44,7 @@
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
 | 无刘海/外接屏回退 | ✅ | `NotchMetrics` 检测刘海，缺失时顶部中央热区（有单测）|
-| 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查 |
+| 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查；菜单栏与设置「更新」页有「查看更新日志」（直达官网 `#update` 锚点）|
 
 ## 交互模型（关键细节）
 
@@ -121,3 +121,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-14 · 长文本提交复位修复**：长文本提交后重开面板，输入条高度停在多行上限（铅笔图标悬空未归位）——根因是节流把"清空草稿→单行"的最终测量吞掉，且事件先于测量发出。修复：清空后测量不受节流限制、事件改在测量之后发送（订阅方读到的总是最新高度）、窗口高度 sink 加 `isOpen` 守卫（收起后不再被驱动）。新增 2 例回归测试，47 单测绿。
 - **2026-08-14 · v0.2.0 发布**：版本升至 0.2.0（`MARKETING_VERSION`，build 2）；打包签名 + 公证 + 装订的 `dist/ForNow-0.2.0.dmg`（`spctl`: Notarized Developer ID），供分发。
 - **2026-08-14 · v0.3.0 自动更新**：Sparkle 2.9.5 经 SPM 接入（启动 + 每日一次自动检查，菜单栏「检查更新…」，设置「更新」页）；更新源托管于产品站同域 Cloudflare Pages（`fornow.liveby.app/updates/appcast.xml`，`_headers` 对 appcast 短缓存 5 分钟）；EdDSA 私钥入 Keychain 并离线备份；`make_dmg.sh` 改 `codesign --deep`（Sparkle 嵌套二进制重签，公证要求）；新增 `Scripts/make_release.sh`（构建公证 → generate_appcast 签名 → wrangler 部署 → 落回站点源码）。踩坑：Sparkle 拒绝 `file://` feed（错误 2001）；wrangler 从 git 仓库运行会把当前分支当预览部署，生产部署须从非 git 临时目录 `--branch main`。47 单测绿；公证 Accepted；生产 feed 实测通过。
+- **2026-08-14 · v0.3.1 更新日志入口**：官网 changelog 区锚点改 `#update`（应用内「查看更新日志」承接目标）；菜单栏与设置「更新」页新增「查看更新日志…」（`NSWorkspace.shared.open` / SwiftUI `Link`，URL 常量在 `UpdaterModel.changelogURL`）。发布 0.3.1（build 4）。
