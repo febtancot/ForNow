@@ -41,7 +41,7 @@ final class NotchController: ObservableObject {
         draftModel.onSubmit = { [weak self] in self?.submitDraft() }
         draftModel.draftDidChange
             .sink { [weak self] in
-                guard let self else { return }
+                guard let self, self.isOpen else { return }
                 self.window.contentHeight = self.openHeight()
             }
             .store(in: &cancellables)

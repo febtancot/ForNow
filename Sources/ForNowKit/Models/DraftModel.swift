@@ -40,17 +40,18 @@ public final class DraftModel: ObservableObject {
             await Task.yield()
             guard let self else { return }
             self.scheduled = false
-            self.draftDidChange.send()
+            // 先测量后广播：订阅方（窗口高度）读到的总是当前草稿对应的最新高度。
             self.measureFieldHeight()
+            self.draftDidChange.send()
         }
     }
 
     private func measureFieldHeight() {
-        let now = Date()
-        if let last = lastMeasuredAt, now.timeIntervalSince(last) < 1 {
+        // 草稿清空（提交/清空按钮）是最终状态，必须立即测量到位；其余变化节流到每秒一次。
+        if !draft.isEmpty, let last = lastMeasuredAt, Date().timeIntervalSince(last) < 1 {
             return
         }
-        lastMeasuredAt = now
+        lastMeasuredAt = Date()
         let measured = DraftTextMetrics.height(for: draft, width: Self.measurementWidth)
         if measured != fieldContentHeight {
             fieldContentHeight = measured
