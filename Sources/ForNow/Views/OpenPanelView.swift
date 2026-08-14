@@ -137,12 +137,16 @@ struct QuickEntryField: View {
                 .foregroundStyle(.secondary)
                 .font(.system(size: 13))
                 .padding(.top, 3)
-            TextField("快速录入：打字后回车暂存", text: $draftModel.draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .lineLimit(1...8)
-                .focused($focused)
-                .onSubmit { draftModel.onSubmit?() }
+            ScrollView {
+                TextField("快速录入：打字后回车暂存", text: $draftModel.draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .focused($focused)
+                    .onSubmit { draftModel.onSubmit?() }
+            }
+            .frame(height: draftModel.fieldContentHeight, alignment: .top)
+            // 粘贴超长文本时输入条在定高框内滚动，系统显示滚动指示。
+            .scrollIndicators(.visible)
             if !draftModel.draft.isEmpty {
                 Button { draftModel.draft = "" } label: {
                     Image(systemName: "xmark.circle.fill")

@@ -36,13 +36,13 @@ final class NotchController: ObservableObject {
         self.store = store
         self.settings = settings
         self.window = NotchWindow()
-        window.contentHeight = layoutSize(for: "").height
+        window.contentHeight = Self.openHeight(fieldHeight: DraftTextMetrics.lineHeight)
 
         draftModel.onSubmit = { [weak self] in self?.submitDraft() }
         draftModel.draftDidChange
             .sink { [weak self] in
                 guard let self else { return }
-                self.window.contentHeight = self.fieldHeight()
+                self.window.contentHeight = self.openHeight()
             }
             .store(in: &cancellables)
 
@@ -170,6 +170,17 @@ final class NotchController: ObservableObject {
 
     private func closedFrame() -> CGRect { metrics().closedFrame() }
     private func openFrame() -> CGRect { metrics().openFrame(width: openSize.width, height: window.contentHeight) }
+
+    /// 面板打开时按输入条高度计算的内容高度。
+    private func openHeight() -> CGFloat {
+        Self.openHeight(fieldHeight: draftModel.fieldContentHeight)
+    }
+
+    private static func openHeight(fieldHeight: CGFloat) -> CGFloat {
+        let clamped = min(max(fieldHeight, DraftTextMetrics.lineHeight),
+                          DraftTextMetrics.lineHeight * 8)
+        return 470 + clamped - DraftTextMetrics.lineHeight
+    }
 
     private func setFrame(_ frame: CGRect, animate: Bool) {
         window.setFrame(frame, display: true, animate: animate)
@@ -318,11 +329,6 @@ final class NotchController: ObservableObject {
 
     // MARK: - 快速录入
 
-    /// 输入条当前高度（草稿为空时取单行高度）。供窗口高度驱动用。
-    private func fieldHeight() -> CGFloat {
-        layoutSize(for: draftModel.draft).height
-    }
-
     /// 提交输入条草稿：非空白文字入库、置顶；若是链接则按链接建项，随后收起。
     func submitDraft() {
         let trimmed = draftModel.draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -346,18 +352,6 @@ final class NotchController: ObservableObject {
         } else {
             draftModel.draft = ""
         }
-    }
-
-    // MARK: - 布局测算
-
-    /// 面板当前内容布局尺寸（固定宽度、按输入条草稿动态高度）。
-    private func layoutSize(for draft: String) -> CGSize {
-        let field = MeasuredField(text: draft)
-        // 输入条可用宽度 = 面板宽 − 左右 padding(28) − 图标(21) − 间距/清空按钮预留(11)。
-        // 取略窄值，窗口高度只多不少。
-        let size = field.measure(width: 324)
-        let clamped = min(max(size.height, 31), 140)
-        return CGSize(width: 384, height: 470 + clamped - 31)
     }
 
     // MARK: - 快速预览
@@ -398,25 +392,5 @@ final class NotchController: ObservableObject {
             try? await Task.sleep(nanoseconds: 1_100_000_000)
             self?.close()
         }
-    }
-}
-
-/// 布局测算辅助：只做尺寸测量、不参与渲染的文本框。
-@MainActor
-private struct MeasuredField: View {
-    let text: String
-
-    func measure(width: CGFloat) -> CGSize {
-        let host = NSHostingController(rootView: self.frame(width: width))
-        host.view.layoutSubtreeIfNeeded()
-        let size = host.view.fittingSize
-        return CGSize(width: width, height: size.height)
-    }
-
-    var body: some View {
-        Text(text.isEmpty ? " " : text)
-            .font(.system(size: 14))
-            .lineLimit(1...8)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
