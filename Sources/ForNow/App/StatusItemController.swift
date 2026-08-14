@@ -1,5 +1,6 @@
 import AppKit
 import ForNowKit
+import Sparkle
 
 /// 菜单栏图标：无法点击 Notch 时的备用入口。
 @MainActor
@@ -7,15 +8,17 @@ final class StatusItemController: NSObject {
     private let store: StashStore
     private let settings: AppSettings
     private let statusItem: NSStatusItem
+    private weak var updater: SPUStandardUpdaterController?
 
     /// 由 AppDelegate 注入：切换暂存面板显示。
     var onTogglePanel: () -> Void = {}
     /// 由 AppDelegate 注入：打开设置窗口。
     var onOpenSettings: () -> Void = {}
 
-    init(store: StashStore, settings: AppSettings) {
+    init(store: StashStore, settings: AppSettings, updater: SPUStandardUpdaterController) {
         self.store = store
         self.settings = settings
+        self.updater = updater
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
@@ -61,6 +64,13 @@ extension StatusItemController: NSMenuDelegate {
         menu.addItem(info)
 
         menu.addItem(.separator())
+
+        let checkUpdates = NSMenuItem(
+            title: "检查更新…",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: "")
+        checkUpdates.target = updater
+        menu.addItem(checkUpdates)
 
         let settingsItem = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self

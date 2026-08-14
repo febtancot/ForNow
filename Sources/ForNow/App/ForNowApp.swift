@@ -13,6 +13,7 @@ struct ForNowApp: App {
             SettingsView()
                 .environmentObject(appDelegate.store)
                 .environmentObject(appDelegate.settings)
+                .environmentObject(appDelegate.updaterModel)
         }
         .onChange(of: appDelegate.settingsVersion, initial: true) { _, _ in
             appDelegate.onOpenSettings = { openSettings() }

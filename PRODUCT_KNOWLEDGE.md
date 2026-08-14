@@ -44,6 +44,7 @@
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
 | 无刘海/外接屏回退 | ✅ | `NotchMetrics` 检测刘海，缺失时顶部中央热区（有单测）|
+| 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查 |
 
 ## 交互模型（关键细节）
 
@@ -61,11 +62,15 @@
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
 - `ForNowKitTests`：47 个单测，无需 app host。
-- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）。
+- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
 
 - **静态库而非动态框架**：内嵌动态框架 ad-hoc 签名报 "bundle format unrecognized"，改静态库彻底规避。
+- **Sparkle 2 经 SPM 引入**（2.9.5，官方 binaryTarget xcframework）：XcodeGen 的 `package:` 依赖由 Xcode 自动链接 + 嵌入 `Contents/Frameworks`（无需 build phase/构建设置）。与 ForNowKit 静态库无冲突。
+- **Sparkle 嵌套二进制重签**：SPM xcframework 内 Autoupdate/Updater.app 出厂为 ad-hoc 签名，公证要求 Developer ID + 安全时间戳——`make_dmg.sh` 用 `codesign --deep` 整包重签解决（已实测公证 Accepted）。
+- **更新签名与 App 签名分离**：appcast 用 EdDSA 私钥（Keychain account `ed25519`）签名，公钥在 `Info.plist` 的 `SUPublicEDKey`；私钥离线备份于 `~/Documents/fornow-sparkle-private-key.txt`（gitignore）。此签名独立于 Developer ID，ad-hoc 本地构建也能验证更新。
+- **本地 feed 调试**：Sparkle 2.9.5 拒绝 `file://` feed（错误 2001「下载请求 URL 必须用 http/https」），本地测试须用 `http://127.0.0.1` 服务；`defaults write com.fornow.app SUFeedURL ...` 覆盖生效（删除后回退 Info.plist）。
 - **未开启 App Sandbox**：简化文件访问 / Apple 事件 / 全局快捷键；上架前需补沙箱 + 授权流程。
 - **JSON 元数据而非 SQLite**：更简单、易测；满足"本地、可持久"。
 - **Carbon 全局快捷键**：无需辅助功能授权。
@@ -93,13 +98,14 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 
 ## 分发 / 打包
 
-- `./Scripts/make_dmg.sh` → Release 构建 → **Developer ID 签名（hardened runtime + 时间戳）** → 输出 `dist/ForNow-<版本>.dmg`（内含 App + `/Applications` 软链，拖拽安装）并签名 DMG。`dist/` 不入库。
+- `./Scripts/make_dmg.sh` → Release 构建 → **Developer ID 签名（hardened runtime + 时间戳，`codesign --deep` 重签含 Sparkle 嵌套二进制）** → 输出 `dist/ForNow-<版本>.dmg`（内含 App + `/Applications` 软链，拖拽安装）并签名 DMG。`dist/` 不入库。
 - 签名证书：`Developer ID Application: Xueliu Shen (8NF4K823FV)`。
 - **公证**：先一次性存凭据（App Store Connect API Key 方式）
   `xcrun notarytool store-credentials "ForNowNotary" --key <AuthKey_*.p8> --key-id <KeyID> --issuer <IssuerID>`，
   再 `NOTARY_PROFILE=ForNowNotary ./Scripts/make_dmg.sh` 自动 submit + staple + 校验。
   （或 Apple ID 方式：`--apple-id <email> --team-id 8NF4K823FV --password <App 专用密码>`。）
 - 未公证的构建换机首开会被 Gatekeeper 拦（右键「打开」，或 `xattr -dr com.apple.quarantine <App>`）；公证+装订后可直接打开。
+- **自动更新（Sparkle 2.9.5）**：更新源 `https://febtancot.github.io/ForNow/updates/appcast.xml`（gh-pages 分支，DMG + appcast + delta + 同名 .md 发布说明）；`./Scripts/make_release.sh` 全流程（构建公证 → 进 gh-pages worktree → generate_appcast 签名 → 推送 → 可选 GitHub Release，`SKIP_GITHUB_RELEASE=1` 跳过）。铁律：旧 DMG 永不删、appcast 只由脚本生成、同名版本只发一次。
 
 ## 阶段变更记录
 

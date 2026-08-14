@@ -1,0 +1,30 @@
+import Combine
+import Sparkle
+
+/// Sparkle 2 更新管理器：持有 SPUStandardUpdaterController，
+/// 并把"上次检查时间"桥接为 SwiftUI 可观察数据。
+@MainActor
+final class UpdaterModel: ObservableObject {
+    let controller: SPUStandardUpdaterController
+
+    @Published private(set) var lastCheckDate: Date?
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        let controller = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+        self.controller = controller
+        lastCheckDate = controller.updater.lastUpdateCheckDate
+        controller.updater.publisher(for: \.lastUpdateCheckDate)
+            .sink { [weak self] date in self?.lastCheckDate = date }
+            .store(in: &cancellables)
+    }
+
+    func checkForUpdates() {
+        controller.checkForUpdates(nil)
+    }
+}

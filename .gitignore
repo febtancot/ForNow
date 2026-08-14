@@ -12,6 +12,10 @@ dist/
 # Secrets — never commit signing/notarization keys
 *.p8
 AuthKey_*.p8
+fornow-sparkle-private-key*
+
+# Sparkle release working tree
+.gh-pages/
 
 # macOS
 .DS_Store

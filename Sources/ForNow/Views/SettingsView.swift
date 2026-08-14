@@ -3,11 +3,14 @@ import ForNowKit
 
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var updater: UpdaterModel
 
     var body: some View {
         TabView {
             generalTab
                 .tabItem { Label("通用", systemImage: "gearshape") }
+            updateTab
+                .tabItem { Label("更新", systemImage: "arrow.down.circle") }
         }
         .frame(width: 460, height: 340)
     }
@@ -33,5 +36,30 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var updateTab: some View {
+        Form {
+            Section("版本") {
+                LabeledContent("当前版本", value: versionText)
+                LabeledContent("上次检查") {
+                    if let date = updater.lastCheckDate {
+                        Text(date.formatted(date: .abbreviated, time: .shortened))
+                    } else {
+                        Text("从未")
+                    }
+                }
+            }
+            Section {
+                Button("检查更新") { updater.checkForUpdates() }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var versionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "\(version) (\(build))"
     }
 }
