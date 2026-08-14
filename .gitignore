@@ -20,3 +20,6 @@ fornow-sparkle-private-key*
 # Xcode user state
 xcuserdata/
 *.xcworkspace/xcuserdata/
+
+# wrangler local state
+.wrangler/
