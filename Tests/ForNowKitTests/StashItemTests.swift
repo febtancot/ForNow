@@ -64,4 +64,11 @@ final class StashItemTests: XCTestCase {
             durationSeconds: 8.0)
         XCTAssertEqual(short.durationText, "0:08")
     }
+
+    func testDurationTextStaticFormatter() {
+        XCTAssertEqual(StashItem.durationText(seconds: 0), "0:00")
+        XCTAssertEqual(StashItem.durationText(seconds: 5), "0:05")
+        XCTAssertEqual(StashItem.durationText(seconds: 65.9), "1:05")
+        XCTAssertEqual(StashItem.durationText(seconds: 3_605), "60:05")
+    }
 }

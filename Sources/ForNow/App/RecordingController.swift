@@ -6,11 +6,14 @@ import ForNowKit
 @MainActor
 final class RecordingController: ObservableObject {
     @Published private(set) var isRecording = false
+    /// 已录制时长（秒），录音中每 0.5s 刷新，供胶囊/头部实时计时显示。
+    @Published private(set) var elapsedSeconds: TimeInterval = 0
 
     private let store: StashStore
     private let feedback: (String) -> Void
     private var recorder: AVAudioRecorder?
     private var tempURL: URL?
+    private var ticker: Timer?
 
     private static let stampFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -80,12 +83,23 @@ final class RecordingController: ObservableObject {
             self.recorder = recorder
             self.tempURL = url
             isRecording = true
+            elapsedSeconds = 0
+            let ticker = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    self?.elapsedSeconds = self?.recorder?.currentTime ?? 0
+                }
+            }
+            RunLoop.main.add(ticker, forMode: .common)
+            self.ticker = ticker
         } catch {
             feedback("录音启动失败")
         }
     }
 
     private func cleanup() {
+        ticker?.invalidate()
+        ticker = nil
+        elapsedSeconds = 0
         if let url = tempURL { try? FileManager.default.removeItem(at: url) }
         tempURL = nil
         recorder = nil

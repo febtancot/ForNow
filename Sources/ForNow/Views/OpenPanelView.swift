@@ -37,18 +37,7 @@ struct OpenPanelView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text("搁这儿").font(.headline)
-            if controller.recorder.isRecording {
-                Button { controller.toggleRecording() } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "stop.circle.fill")
-                            .foregroundStyle(.red)
-                        Text("录音中").font(.caption)
-                    }
-                }
-                .buttonStyle(.plain)
-                .help("停止录音并暂存")
-                .accessibilityLabel("停止录音并暂存")
-            }
+            micButton
             Spacer()
             if !store.items.isEmpty {
                 Button(allSelected ? "取消全选" : "全选") { toggleSelectAll() }
@@ -65,6 +54,29 @@ struct OpenPanelView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    /// 头部常驻 mic：空闲时点击开始录音；录音中显示红色停止按钮与实时时长。
+    private var micButton: some View {
+        Button { controller.toggleRecording() } label: {
+            if controller.recorder.isRecording {
+                HStack(spacing: 4) {
+                    Image(systemName: "stop.circle.fill")
+                        .foregroundStyle(.red)
+                    Text("录音中 \(StashItem.durationText(seconds: controller.recorder.elapsedSeconds))")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
+                }
+            } else {
+                Image(systemName: "mic")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
+        .accessibilityLabel(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
     }
 
     private var allSelected: Bool {

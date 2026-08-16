@@ -182,7 +182,12 @@ public extension StashItem {
     /// 录音时长文案，如 "0:05"、"1:23"。
     var durationText: String? {
         guard let seconds = durationSeconds else { return nil }
-        return String(format: "%d:%02d", Int(seconds) / 60, Int(seconds) % 60)
+        return Self.durationText(seconds: seconds)
+    }
+
+    /// 秒数 → "m:ss" 文案；录制中实时计时与入库时长共用同一格式。
+    static func durationText(seconds: TimeInterval) -> String {
+        String(format: "%d:%02d", Int(seconds) / 60, Int(seconds) % 60)
     }
 
     /// 拖出为文件时的安全文件名（基于摘要，去除路径分隔符，截断到 40 字符）。

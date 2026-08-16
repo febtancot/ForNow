@@ -33,13 +33,9 @@ struct ClosedPillView: View {
             // 铺满整个窗口（= 刘海区域）的命中层。用极低不透明度而非 Color.clear，
             // 因为 Color.clear 只参与悬停、不参与点击命中（点了没反应的根因）。
             Color.white.opacity(0.001)
-            pill
+            ClosedCapsuleBar(hovering: hovering)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, 1)
-            MicButton()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                .padding(.leading, 8)
-                .padding(.bottom, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -52,45 +48,65 @@ struct ClosedPillView: View {
             controller.importProviders(providers)
             return true
         }
-        .accessibilityElement()
-        .accessibilityLabel("搁这儿，\(store.count) 个暂存项目")
-        .accessibilityHint("打开暂存面板")
-        .accessibilityAddTraits(.isButton)
-    }
-
-    private var pill: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "tray.and.arrow.down.fill")
-                .font(.system(size: 11, weight: .semibold))
-            if store.count > 0 {
-                Text("\(store.count)")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(Color.black.opacity(hovering ? 0.92 : 0.7)))
-        .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
     }
 }
 
-/// 刘海左侧的录音按钮：点击开始录音，再点停止并入库。
-struct MicButton: View {
+/// 收起态的胶囊条：左侧 mic（点击录音/停止，录音中显示时长）、右侧托盘图标+计数（点击打开）。
+/// 两个分段都是独立按钮，因此 VoiceOver 可分别触达；窗口其余区域点击同样打开面板。
+struct ClosedCapsuleBar: View {
     @EnvironmentObject private var controller: NotchController
+    @EnvironmentObject private var store: StashStore
+    let hovering: Bool
 
     var body: some View {
+        HStack(spacing: 0) {
+            micSegment
+            Rectangle()
+                .fill(Color.white.opacity(0.2))
+                .frame(width: 1, height: 12)
+            traySegment
+        }
+        .foregroundStyle(.white)
+        .background(Capsule().fill(Color.black.opacity(hovering ? 0.92 : 0.7)))
+        .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+    }
+
+    private var micSegment: some View {
         Button { controller.toggleRecording() } label: {
-            Image(systemName: controller.recorder.isRecording ? "mic.fill" : "mic")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(controller.recorder.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.white))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(Color.black.opacity(0.7)))
-                .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+            HStack(spacing: 4) {
+                Image(systemName: controller.recorder.isRecording ? "mic.fill" : "mic")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(controller.recorder.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.white))
+                if controller.recorder.isRecording {
+                    Text(StashItem.durationText(seconds: controller.recorder.elapsedSeconds))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
         }
         .buttonStyle(.plain)
         .help(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
         .accessibilityLabel(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
+    }
+
+    private var traySegment: some View {
+        Button { controller.open() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "tray.and.arrow.down.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                if store.count > 0 {
+                    Text("\(store.count)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
+        .help("打开暂存面板")
+        .accessibilityLabel("搁这儿，\(store.count) 个暂存项目")
+        .accessibilityHint("打开暂存面板")
     }
 }
