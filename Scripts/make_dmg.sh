@@ -33,7 +33,9 @@ APP="$DERIVED/Build/Products/$CONFIG/$APP_NAME.app"
 
 echo "==> 签名 App"
 if [ "$HARDEN" = 1 ]; then
-  codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+  # --deep：递归重签嵌套二进制（Sparkle.framework 内的 Autoupdate/Updater.app
+  # 出厂为 ad-hoc 签名，公证要求 Developer ID + 安全时间戳）。
+  codesign --deep --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
 else
   codesign --force --sign "-" "$APP"
 fi

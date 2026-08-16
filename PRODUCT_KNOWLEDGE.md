@@ -44,6 +44,7 @@
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
 | 无刘海/外接屏回退 | ✅ | `NotchMetrics` 检测刘海，缺失时顶部中央热区（有单测）|
+| 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查 |
 
 ## 交互模型（关键细节）
 
@@ -61,11 +62,15 @@
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
 - `ForNowKitTests`：47 个单测，无需 app host。
-- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）。
+- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
 
 - **静态库而非动态框架**：内嵌动态框架 ad-hoc 签名报 "bundle format unrecognized"，改静态库彻底规避。
+- **Sparkle 2 经 SPM 引入**（2.9.5，官方 binaryTarget xcframework）：XcodeGen 的 `package:` 依赖由 Xcode 自动链接 + 嵌入 `Contents/Frameworks`（无需 build phase/构建设置）。与 ForNowKit 静态库无冲突。
+- **Sparkle 嵌套二进制重签**：SPM xcframework 内 Autoupdate/Updater.app 出厂为 ad-hoc 签名，公证要求 Developer ID + 安全时间戳——`make_dmg.sh` 用 `codesign --deep` 整包重签解决（已实测公证 Accepted）。
+- **更新签名与 App 签名分离**：appcast 用 EdDSA 私钥（Keychain account `ed25519`）签名，公钥在 `Info.plist` 的 `SUPublicEDKey`；私钥离线备份于 `~/Documents/fornow-sparkle-private-key.txt`（gitignore）。此签名独立于 Developer ID，ad-hoc 本地构建也能验证更新。
+- **本地 feed 调试**：Sparkle 2.9.5 拒绝 `file://` feed（错误 2001「下载请求 URL 必须用 http/https」），本地测试须用 `http://127.0.0.1` 服务；`defaults write com.fornow.app SUFeedURL ...` 覆盖生效（删除后回退 Info.plist）。
 - **未开启 App Sandbox**：简化文件访问 / Apple 事件 / 全局快捷键；上架前需补沙箱 + 授权流程。
 - **JSON 元数据而非 SQLite**：更简单、易测；满足"本地、可持久"。
 - **Carbon 全局快捷键**：无需辅助功能授权。
@@ -93,13 +98,14 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 
 ## 分发 / 打包
 
-- `./Scripts/make_dmg.sh` → Release 构建 → **Developer ID 签名（hardened runtime + 时间戳）** → 输出 `dist/ForNow-<版本>.dmg`（内含 App + `/Applications` 软链，拖拽安装）并签名 DMG。`dist/` 不入库。
+- `./Scripts/make_dmg.sh` → Release 构建 → **Developer ID 签名（hardened runtime + 时间戳，`codesign --deep` 重签含 Sparkle 嵌套二进制）** → 输出 `dist/ForNow-<版本>.dmg`（内含 App + `/Applications` 软链，拖拽安装）并签名 DMG。`dist/` 不入库。
 - 签名证书：`Developer ID Application: Xueliu Shen (8NF4K823FV)`。
 - **公证**：先一次性存凭据（App Store Connect API Key 方式）
   `xcrun notarytool store-credentials "ForNowNotary" --key <AuthKey_*.p8> --key-id <KeyID> --issuer <IssuerID>`，
   再 `NOTARY_PROFILE=ForNowNotary ./Scripts/make_dmg.sh` 自动 submit + staple + 校验。
   （或 Apple ID 方式：`--apple-id <email> --team-id 8NF4K823FV --password <App 专用密码>`。）
 - 未公证的构建换机首开会被 Gatekeeper 拦（右键「打开」，或 `xattr -dr com.apple.quarantine <App>`）；公证+装订后可直接打开。
+- **自动更新（Sparkle 2.9.5）**：更新源 `https://fornow.liveby.app/updates/appcast.xml`（Cloudflare Pages 项目 `fornow`，与产品站同域；DMG + appcast + delta + 同名 .md 发布说明；站点源码在 `~/AI projects/fornow_site/`，`_headers` 对 appcast 短缓存 5 分钟、对 DMG/delta immutable）；`./Scripts/make_release.sh` 全流程（构建公证 → 组装站点 + updates → generate_appcast 签名 → 更新首页下载链接 → wrangler 部署 → 落回站点源码目录）。铁律：旧 DMG 永不删、appcast 只由脚本生成、同名版本只发一次。
 
 ## 阶段变更记录
 
@@ -113,3 +119,5 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-14 · 输入性能修复**：输入条粘贴大段文字卡顿——根因是草稿放在 `NotchController` 上，每次内容变化都广播触发整个面板重渲染（列表每行文件系统查询、底部统计递归磁盘扫描），且 `.animation(value:)` 对多行扩展逐帧动画重排大文本。将草稿/聚焦状态迁入独立 `DraftModel`（仅输入条观察，`@Published` 只影响该小组件）；窗口高度改由 `draftDidChange` 事件（异步合并去抖）驱动 `NotchWindow.contentHeight` 直接调整（`NSHostingController` 轻量测量，替代 SwiftUI 逐帧几何回传）；去除输入条内容动画。新增 `DraftModelTests`（2 例：同循环合并为一次事件、相同值不重复触发），40 单测绿。
 - **2026-08-14 · 输入性能二轮修复**：粘贴仍有卡顿——测量用 SwiftUI `Text` 全文排版，每次击键在主线程做 O(全文) 布局。改为 `DraftTextMetrics`（TextKit 惰性排版、最多排 8 行，另对超长文本截断测量前缀，成本与行长成正比）；高度测量节流（每秒一次、值不变不发布）。同时输入条改为 ScrollView 定高滚动（系统可见滚动条），去掉 `lineLimit(1...8)` 内部滚动。新增 `DraftTextMetricsTests`（5 例：截断契约、空文单行、换行、封顶 8 行、宽度无关），45 单测绿。
 - **2026-08-14 · 长文本提交复位修复**：长文本提交后重开面板，输入条高度停在多行上限（铅笔图标悬空未归位）——根因是节流把"清空草稿→单行"的最终测量吞掉，且事件先于测量发出。修复：清空后测量不受节流限制、事件改在测量之后发送（订阅方读到的总是最新高度）、窗口高度 sink 加 `isOpen` 守卫（收起后不再被驱动）。新增 2 例回归测试，47 单测绿。
+- **2026-08-14 · v0.2.0 发布**：版本升至 0.2.0（`MARKETING_VERSION`，build 2）；打包签名 + 公证 + 装订的 `dist/ForNow-0.2.0.dmg`（`spctl`: Notarized Developer ID），供分发。
+- **2026-08-14 · v0.3.0 自动更新**：Sparkle 2.9.5 经 SPM 接入（启动 + 每日一次自动检查，菜单栏「检查更新…」，设置「更新」页）；更新源托管于产品站同域 Cloudflare Pages（`fornow.liveby.app/updates/appcast.xml`，`_headers` 对 appcast 短缓存 5 分钟）；EdDSA 私钥入 Keychain 并离线备份；`make_dmg.sh` 改 `codesign --deep`（Sparkle 嵌套二进制重签，公证要求）；新增 `Scripts/make_release.sh`（构建公证 → generate_appcast 签名 → wrangler 部署 → 落回站点源码）。踩坑：Sparkle 拒绝 `file://` feed（错误 2001）；wrangler 从 git 仓库运行会把当前分支当预览部署，生产部署须从非 git 临时目录 `--branch main`。47 单测绿；公证 Accepted；生产 feed 实测通过。

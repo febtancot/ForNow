@@ -7,6 +7,7 @@ import ForNowKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = StashStore.makeDefault()
     let settings = AppSettings()
+    let updaterModel = UpdaterModel()
 
     private var statusController: StatusItemController?
     private var notchController: NotchController?
@@ -22,7 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         let notch = NotchController(store: store, settings: settings)
-        let status = StatusItemController(store: store, settings: settings)
+        let status = StatusItemController(store: store, settings: settings,
+                                          updater: updaterModel.controller)
         status.onTogglePanel = { [weak notch] in notch?.toggle() }
         status.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
 
