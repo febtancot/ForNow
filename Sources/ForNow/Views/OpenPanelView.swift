@@ -120,8 +120,14 @@ struct OpenPanelView: View {
             Button("清空全部", role: .destructive) { store.removeAll() }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("此操作不可撤销，将删除全部 \(store.count) 个项目及其文件。")
+            Text(clearAllMessage)
         }
+    }
+
+    private var clearAllMessage: String {
+        let lockedCount = store.items.filter(\.locked).count
+        let base = "此操作不可撤销，将删除全部 \(store.count) 个项目及其文件。"
+        return lockedCount > 0 ? base + "（\(lockedCount) 项已锁定将保留）" : base
     }
 }
 

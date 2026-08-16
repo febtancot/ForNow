@@ -10,6 +10,8 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
     /// 界面主标题：文件/图片为原文件名；文字为前两行摘要；链接为标题或域名。
     public var displayName: String
     public var createdAt: Date
+    /// 锁定项不被「清空」与删除操作移除（需先解锁）。
+    public var locked: Bool
 
     // MARK: 文件 / 图片
     /// 相对 `FileStorage.rootDirectory` 的路径，形如 `<uuid>/<原文件名>`。
@@ -28,10 +30,15 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
     public var urlString: String?
     public var linkTitle: String?
 
+    // MARK: 录音
+    /// 录音时长（秒）。
+    public var durationSeconds: Double?
+
     public init(id: UUID = UUID(),
                 kind: StashItemKind,
                 displayName: String,
                 createdAt: Date = Date(),
+                locked: Bool = false,
                 relativePath: String? = nil,
                 byteSize: Int64? = nil,
                 originalFileName: String? = nil,
@@ -39,11 +46,13 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
                 pixelHeight: Int? = nil,
                 text: String? = nil,
                 urlString: String? = nil,
-                linkTitle: String? = nil) {
+                linkTitle: String? = nil,
+                durationSeconds: Double? = nil) {
         self.id = id
         self.kind = kind
         self.displayName = displayName
         self.createdAt = createdAt
+        self.locked = locked
         self.relativePath = relativePath
         self.byteSize = byteSize
         self.originalFileName = originalFileName
@@ -52,6 +61,34 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
         self.text = text
         self.urlString = urlString
         self.linkTitle = linkTitle
+        self.durationSeconds = durationSeconds
+    }
+
+    /// 手写解码以兼容旧元数据：缺少 `locked`/`durationSeconds` 键时回退默认值，
+    /// 而不是整份元数据解码失败。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(StashItemKind.self, forKey: .kind)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        locked = try container.decodeIfPresent(Bool.self, forKey: .locked) ?? false
+        relativePath = try container.decodeIfPresent(String.self, forKey: .relativePath)
+        byteSize = try container.decodeIfPresent(Int64.self, forKey: .byteSize)
+        originalFileName = try container.decodeIfPresent(String.self, forKey: .originalFileName)
+        pixelWidth = try container.decodeIfPresent(Int.self, forKey: .pixelWidth)
+        pixelHeight = try container.decodeIfPresent(Int.self, forKey: .pixelHeight)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        urlString = try container.decodeIfPresent(String.self, forKey: .urlString)
+        linkTitle = try container.decodeIfPresent(String.self, forKey: .linkTitle)
+        durationSeconds = try container.decodeIfPresent(Double.self, forKey: .durationSeconds)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, displayName, createdAt, locked
+        case relativePath, byteSize, originalFileName
+        case pixelWidth, pixelHeight, text
+        case urlString, linkTitle, durationSeconds
     }
 }
 

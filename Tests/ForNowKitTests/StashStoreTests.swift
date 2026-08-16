@@ -121,6 +121,70 @@ final class StashStoreTests: XCTestCase {
         XCTAssertEqual(store.totalByteSize, 0)
     }
 
+    // MARK: 锁定
+
+    func testRemoveAllKeepsLockedItemsAndFiles() throws {
+        let store = makeStore()
+        let f = try makeSourceFile(named: "keep.txt", contents: "data")
+        let fileItem = try XCTUnwrap(store.addFiles(at: [f]).added.first)
+        let textItem = store.addText("unlocked")
+        store.setLocked(true, for: [fileItem.id])
+
+        store.removeAll()
+
+        XCTAssertEqual(store.items.map(\.id), [fileItem.id])
+        XCTAssertNotNil(store.absoluteURL(for: fileItem))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(store.absoluteURL(for: fileItem)).path))
+        XCTAssertFalse(store.items.contains(where: { $0.id == textItem.id }))
+    }
+
+    func testRemoveSkipsLockedItems() throws {
+        let store = makeStore()
+        let locked = store.addText("locked")
+        let normal = store.addText("normal")
+        store.setLocked(true, for: [locked.id])
+
+        let removed = store.remove(ids: [locked.id, normal.id])
+
+        XCTAssertEqual(removed, 1)
+        XCTAssertEqual(store.items.map(\.id), [locked.id])
+        XCTAssertTrue(store.items[0].locked)
+    }
+
+    func testLockedStatePersistsAcrossReload() {
+        let store = makeStore()
+        let item = store.addText("pin me")
+        store.setLocked(true, for: [item.id])
+        store.setLocked(false, for: [item.id])
+        store.setLocked(true, for: [item.id])
+
+        let reloaded = makeStore()
+        reloaded.load()
+        XCTAssertEqual(reloaded.items.count, 1)
+        XCTAssertEqual(reloaded.items.first?.locked, true)
+    }
+
+    func testLegacyMetadataWithoutLockedKeyLoadsAsUnlocked() throws {
+        let legacyJSON = """
+        [
+          {
+            "id": "\(UUID().uuidString)",
+            "kind": "text",
+            "displayName": "旧数据",
+            "createdAt": "2026-08-16T10:00:00Z",
+            "text": "旧数据内容"
+          }
+        ]
+        """
+        try Data(legacyJSON.utf8).write(to: metadataURL)
+
+        let store = makeStore()
+        store.load()
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.items.first?.locked, false)
+        XCTAssertEqual(store.items.first?.text, "旧数据内容")
+    }
+
     // MARK: 持久化（模拟重启）
 
     func testPersistenceSurvivesReload() throws {

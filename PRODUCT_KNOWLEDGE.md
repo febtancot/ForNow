@@ -34,7 +34,8 @@
 | 拖出 | ✅ | 每行 `.onDrag` 提供文件 URL / 文本 / 链接；默认保留原项 |
 | 单选/多选/全选 | ✅ | 单击选中、⌘-单击多选、⌘A 全选；蓝色高亮 |
 | 复制所选 | ✅ | 底部按钮或 `⌘C`；文件→文件URL、链接→URL、文字→字符串 |
-| 删除/清空 | ✅ | Delete 删所选、右键删除、底部"清空"二次确认 |
+| 删除/清空 | ✅ | Delete 删所选、右键删除、底部"清空"二次确认；锁定项被跳过 |
+| 锁定 | ✅ | 右键「锁定/解锁」（多选时批量）；锁定行显示锁图标，不受清空/删除影响；旧元数据无 `locked` 键自动按未锁定加载（手写解码兜底，有单测）|
 | 打开/预览 | ✅ | 双击打开文件/图片/链接；双击文字弹出原文预览窗；文件/图片右键快速预览（QLPreviewPanel）|
 | 列表图标 | ✅ | 文件/文件夹用真实 Finder 图标；图片缩略图；文字/链接用符号 |
 | 本地持久化 | ✅ | 文件复制进 `~/Library/Application Support/ForNow/Files/<uuid>/原名`，元数据 JSON；重启仍在 |
@@ -53,6 +54,7 @@
 - **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
+- **锁定**：右键行 →「锁定」（多选时批量，已全锁则显示「解锁」）；锁定行尾显示锁图标、悬停删除按钮隐藏；「清空」与 Delete/右键删除都跳过锁定项（提示保留数量），需先解锁才能删除。
 - **快速录入（输入条，面板底部）**：面板打开**不**自动聚焦（保证 ⌘V 走传统粘贴入库），点击输入条才开始打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行输入区（上限 8 行，超出后**定高滚动、显示滚动条**）。**状态隔离与高度测量**：草稿/聚焦状态在独立 `DraftModel`（仅输入条观察），打字/粘贴只重绘输入条；高度测量用 `DraftTextMetrics`（TextKit 惰性排版、只排前 8 行，成本与行长成正比、与全文长度无关，另对超长文本截断测量前缀），窗口高度由合并去抖的 `draftDidChange` 事件驱动 `NotchWindow.contentHeight` 直接调整，粘贴大段文字不卡顿、无逐帧动画重排。
 - **设置窗口入口**：状态栏菜单「设置…」→ `StatusItemController` 回调 → `AppDelegate.onOpenSettings` → SwiftUI `openSettings` 动作（由 `ForNowApp` 场景内容经 `onChange(of: settingsVersion, initial: true)` 注入；`settingsVersion` 由 `settings.objectWillChange` 驱动递增，保证 body 至少评估一次）。AppKit 的 `showSettingsWindow:` 在新版 SDK 已移除、不可用。
 
@@ -124,3 +126,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-14 · v0.3.1 更新日志入口**：官网 changelog 区锚点改 `#update`（应用内「查看更新日志」承接目标）；菜单栏与设置「更新」页新增「查看更新日志…」（`NSWorkspace.shared.open` / SwiftUI `Link`，URL 常量在 `UpdaterModel.changelogURL`）。发布 0.3.1（build 4）。
 - **2026-08-16 · 修复 ⌘V 粘贴入库失效**：快速录入上线后面板打开即自动聚焦输入条，⌘V 被输入条吞掉，传统的「打开面板 → ⌘V 直接入库」失效。修复：去掉 `QuickEntryField` 的 `onAppear` 自动聚焦，面板打开不再处于编辑状态（⌘V/⌘C/⌘A/Delete/Esc 全走列表快捷键）；点击输入条才开始打字，聚焦状态仍由 `.onChange(of: focused)` 同步 `DraftModel.isTyping`；空态提示改「点击输入条打字录入，或拖入文件、按 ⌘V 粘贴」。47 单测绿。
 - **2026-08-16 · v0.3.2 发布**：版本升至 0.3.2（build 5）发布 ⌘V 修复；站点 changelog 加 v0.3.2 卡片（`c-tag--fix`），发布说明 `updates/ForNow-0.3.2.md` 随 appcast 嵌入。本机经 Sparkle 更新验证。
+- **2026-08-16 · 锁定**：`StashItem` 新增 `locked` 字段（手写解码兜底旧元数据，缺失键按未锁定加载）；`StashStore.removeAll`/`remove(ids:)` 跳过锁定项（返回实际删除数）、新增 `setLocked`；右键「锁定/解锁」批量切换、锁定行显示锁图标并隐藏悬停删除；「清空」对话框提示锁定保留数；删除反馈区分锁定项。新增 4 例测试（清空保留锁定项及文件、删除跳过、持久化、旧元数据兼容），51 单测绿。

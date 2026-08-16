@@ -131,10 +131,14 @@ final class NotchController: ObservableObject {
 
     func deleteSelection() {
         guard !selection.isEmpty else { return }
-        let count = selection.count
-        store.remove(ids: selection)
+        let lockedCount = store.items.filter { selection.contains($0.id) && $0.locked }.count
+        let removed = store.remove(ids: selection)
         selection.removeAll()
-        feedback("已删除 \(count) 项")
+        if lockedCount > 0 {
+            feedback(removed > 0 ? "已删除 \(removed) 项，\(lockedCount) 项已锁定" : "所选已锁定，先解锁再删除")
+        } else {
+            feedback("已删除 \(removed) 项")
+        }
     }
 
     func copyItems(_ items: [StashItem]) {
@@ -145,10 +149,27 @@ final class NotchController: ObservableObject {
 
     func removeItems(_ items: [StashItem]) {
         guard !items.isEmpty else { return }
+        let lockedCount = items.filter(\.locked).count
         let ids = Set(items.map(\.id))
-        store.remove(ids: ids)
+        let removed = store.remove(ids: ids)
         selection.subtract(ids)
-        feedback(items.count > 1 ? "已删除 \(items.count) 项" : "已删除")
+        if lockedCount > 0 {
+            feedback(removed > 0 ? "已删除 \(removed) 项，\(lockedCount) 项已锁定" : "已锁定，先解锁再删除")
+        } else {
+            feedback(items.count > 1 ? "已删除 \(items.count) 项" : "已删除")
+        }
+    }
+
+    /// 锁定/解锁一批项目（上下文菜单）。全锁定时整体解锁，否则整体锁定。
+    func toggleLock(_ items: [StashItem]) {
+        guard !items.isEmpty else { return }
+        let allLocked = items.allSatisfy(\.locked)
+        store.setLocked(!allLocked, for: Set(items.map(\.id)))
+        if items.count > 1 {
+            feedback(allLocked ? "已解锁 \(items.count) 项" : "已锁定 \(items.count) 项")
+        } else {
+            feedback(allLocked ? "已解锁" : "已锁定")
+        }
     }
 
     // MARK: - 几何

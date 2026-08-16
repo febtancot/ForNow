@@ -37,7 +37,14 @@ struct StashItemRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
-            if hovering {
+            if item.locked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .help("已锁定，不会被清空")
+                    .accessibilityLabel("已锁定")
+            }
+            if hovering, !item.locked {
                 Button {
                     controller.removeItems([item])
                 } label: {
@@ -78,7 +85,7 @@ struct StashItemRow: View {
         .onDrag { ItemActions.dragProvider(item, store: store) }
         .contextMenu { contextMenu }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(kindLabel)，\(item.displayName)\(isSelected ? "，已选中" : "")")
+        .accessibilityLabel("\(kindLabel)，\(item.displayName)\(isSelected ? "，已选中" : "")\(item.locked ? "，已锁定" : "")")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
@@ -88,6 +95,15 @@ struct StashItemRow: View {
             controller.copyItems(targets)
         } label: {
             Label(targets.count > 1 ? "复制 \(targets.count) 项" : "复制", systemImage: "doc.on.doc")
+        }
+        Button {
+            controller.toggleLock(targets)
+        } label: {
+            if targets.allSatisfy(\.locked) {
+                Label(targets.count > 1 ? "解锁 \(targets.count) 项" : "解锁", systemImage: "lock.open")
+            } else {
+                Label(targets.count > 1 ? "锁定 \(targets.count) 项" : "锁定", systemImage: "lock")
+            }
         }
         if item.kind == .text {
             Button { controller.previewText(item) } label: {

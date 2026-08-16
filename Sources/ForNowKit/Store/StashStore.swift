@@ -123,26 +123,48 @@ public final class StashStore: ObservableObject {
         persist()
     }
 
-    // MARK: - 删除
+    // MARK: - 删除（锁定项被跳过，需先解锁）
 
-    public func remove(ids: Set<UUID>) {
-        guard !ids.isEmpty else { return }
-        for item in items where ids.contains(item.id) {
+    /// 删除指定项目（锁定项跳过），返回实际删除的数量。
+    @discardableResult
+    public func remove(ids: Set<UUID>) -> Int {
+        guard !ids.isEmpty else { return 0 }
+        var removed = 0
+        for item in items where ids.contains(item.id) && !item.locked {
+            if let relativePath = item.relativePath {
+                try? fileStorage.remove(relativePath: relativePath)
+            }
+            removed += 1
+        }
+        items.removeAll { ids.contains($0.id) && !$0.locked }
+        persist()
+        return removed
+    }
+
+    @discardableResult
+    public func remove(_ item: StashItem) -> Int {
+        remove(ids: [item.id])
+    }
+
+    /// 清空所有未锁定项目；锁定项及其文件保留。
+    public func removeAll() {
+        for item in items where !item.locked {
             if let relativePath = item.relativePath {
                 try? fileStorage.remove(relativePath: relativePath)
             }
         }
-        items.removeAll { ids.contains($0.id) }
+        items.removeAll { !$0.locked }
         persist()
     }
 
-    public func remove(_ item: StashItem) {
-        remove(ids: [item.id])
-    }
+    // MARK: - 锁定
 
-    public func removeAll() {
-        try? fileStorage.removeAll()
-        items.removeAll()
+    /// 设置一批项目的锁定状态（锁定项不受清空与删除影响）。
+    public func setLocked(_ locked: Bool, for ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        for index in items.indices where ids.contains(items[index].id) {
+            items[index].locked = locked
+        }
         persist()
     }
 
