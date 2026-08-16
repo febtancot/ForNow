@@ -30,8 +30,9 @@
 | 拖近自动展开 | ✅ | 拖内容进入刘海热区自动展开，落下入库后自动收起 |
 | `⌘V` 粘贴入库 | ✅ | 优先级 文件>图片>链接>富文本>纯文本（`PasteboardImporter`，有单测）；输入条聚焦时由输入条原生处理 |
 | 快速录入 | ✅ | 面板底部输入条，**点击聚焦**后打字，回车入库置顶并收起；纯文字建文字项、http(s) 地址自动建链接项；文字超长时输入条自动扩展为多行（上限 8 行后内部滚动）|
-| 录音 | ✅ | notch 左侧 mic（收起状态常驻），点击开始录音、再点停止入库置顶（m4a、波形图标、时长+大小）；首次点击弹麦克风权限；面板打开时头部显示「录音中」可停止；双击/「打开」用默认播放器播放，支持复制/拖出/快速预览/在 Finder 显示 |
+| 录音 | ✅ | notch 左侧 mic（收起状态常驻），点击开始录音、再点停止入库置顶（m4a、波形图标、时长+大小）；首次点击弹麦克风权限；**停止入库后面板自动展开并高亮新录音**；面板打开时头部显示「录音中」可停止；双击/「打开」用默认播放器播放，支持复制/拖出/快速预览/在 Finder 显示 |
 | 五类内容 | ✅ | 文件/图片/文字/链接/录音；图标、缩略图、尺寸、摘要、加入日期时间 |
+| 文件去重 | ✅ | 文件/图片按内容哈希（SHA-256）识别：同一文件重复拖入/粘贴只入库一次，提示「已存在」并高亮原项目（有重复时面板不自动收起）；同批内重复同样拦截，重复项的暂存副本被清理；目录与旧数据（无哈希）不去重 |
 | 拖出 | ✅ | 文件/图片/录音提供文件 URL；**文字同时提供 .txt 文件与纯文本**（拖入 Finder 得到 txt、拖入文本框得到文字）；链接提供 URL；默认保留原项 |
 | 单选/多选/全选 | ✅ | 单击选中、⌘-单击多选、⌘A 全选；蓝色高亮 |
 | 复制所选 | ✅ | 底部按钮或 `⌘C`；文件→文件URL、链接→URL、文字→字符串 |
@@ -56,7 +57,8 @@
 - **图标**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
 - **锁定**：右键行 →「锁定」（多选时批量，已全锁则显示「解锁」）；锁定行尾显示锁图标、悬停删除按钮隐藏；「清空」与 Delete/右键删除都跳过锁定项（提示保留数量），需先解锁才能删除。
-- **录音（notch 左侧 mic）**：收起状态 notch 左下角常驻 mic 胶囊，点击开始（首次弹麦克风权限）、再点停止入库；不足 0.5 秒视为误触丢弃；音频存 m4a（`AVAudioRecorder`，AAC 44.1kHz 单声道），文件名「录音-时间戳.m4a」、列表显示「录音 · 时刻」；录音中面板头部有「录音中」停止按钮；音频行副标题显示时长（`durationText`）。
+- **录音（notch 左侧 mic）**：收起状态 notch 左下角常驻 mic 胶囊，点击开始（首次弹麦克风权限）、再点停止入库；不足 0.5 秒视为误触丢弃；音频存 m4a（`AVAudioRecorder`，AAC 44.1kHz 单声道），文件名「录音-时间戳.m4a」、列表显示「录音 · 时刻」；**停止入库后面板自动展开并高亮新录音**；录音中面板头部有「录音中」停止按钮；音频行副标题显示时长（`durationText`）。
+- **文件去重**：文件/图片入库时计算内容 SHA-256（`ContentHasher`，流式读取不整载内存，存入 `StashItem.contentHash`）；`StashStore.insert` 与已有（含同批）项目比对，内容相同则跳过入库并清理其暂存副本，返回已有项目；拖入/粘贴路径提示「已存在」并高亮原项目，有重复时不自动收起面板；目录无法哈希、旧数据无哈希，均不参与去重。
 - **日期显示**：每行副标题时间戳为「日期 + 时间」（如 8月16日 22:30）。
 - **快速录入（输入条，面板底部）**：面板打开**不**自动聚焦（保证 ⌘V 走传统粘贴入库），点击输入条才开始打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行输入区（上限 8 行，超出后**定高滚动、显示滚动条**）。**状态隔离与高度测量**：草稿/聚焦状态在独立 `DraftModel`（仅输入条观察），打字/粘贴只重绘输入条；高度测量用 `DraftTextMetrics`（TextKit 惰性排版、只排前 8 行，成本与行长成正比、与全文长度无关，另对超长文本截断测量前缀），窗口高度由合并去抖的 `draftDidChange` 事件驱动 `NotchWindow.contentHeight` 直接调整，粘贴大段文字不卡顿、无逐帧动画重排。
 - **设置窗口入口**：状态栏菜单「设置…」→ `StatusItemController` 回调 → `AppDelegate.onOpenSettings` → SwiftUI `openSettings` 动作（由 `ForNowApp` 场景内容经 `onChange(of: settingsVersion, initial: true)` 注入；`settingsVersion` 由 `settings.objectWillChange` 驱动递增，保证 body 至少评估一次）。AppKit 的 `showSettingsWindow:` 在新版 SDK 已移除、不可用。
@@ -66,8 +68,8 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：47 个单测，无需 app host。
-- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈/录音切换）、`RecordingController`（AVAudioRecorder 录音状态机）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
+- `ForNowKitTests`：58 个单测，无需 app host。
+- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈/录音切换）、`RecordingController`（AVAudioRecorder 录音状态机）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
 
@@ -83,7 +85,7 @@
 
 ## 当前状态与验证
 
-- 构建绿、47 单测绿、`.app` 正常启动为菜单栏程序、无崩溃/错误日志。
+- 构建绿、58 单测绿、`.app` 正常启动为菜单栏程序、无崩溃/错误日志。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -134,3 +136,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-16 · 暂存项显示日期**：行副标题时间戳从仅时间改为「日期 + 时间」（`.abbreviated` + `.shortened`）。
 - **2026-08-16 · 设置窗口置前**：LSUIElement 菜单栏程序点状态栏菜单不激活 App，设置窗口被其他窗口遮挡；`AppDelegate.openSettingsWindow` 打开设置后 `NSApp.activate(ignoringOtherApps:)` 并把关键窗口 orderFront。
 - **2026-08-16 · 录音**：新增 `StashItemKind.audio` 与 `StashItem.makeAudio`/`durationText`/`durationSeconds`（手写解码兜底）；`StashStore.addAudio`（m4a 入库）；`RecordingController`（AVAudioRecorder，AAC 44.1kHz 单声道，`AVAudioApplication` 权限请求，不足 0.5s 丢弃）；notch 左侧 mic 胶囊（`MicButton`，录音中变红）+ 面板头部「录音中」停止按钮；音频行波形图标、时长副标题、可打开/复制/拖出/快速预览/在 Finder 显示；Info.plist 加 `NSMicrophoneUsageDescription`。新增 3 例测试（入库+时长、持久化、文案），55 单测绿。
+- **2026-08-16 · 文件去重 + 录音自动展示**：`StashItem` 新增 `contentHash`（SHA-256，手写解码兜底旧元数据）；新增 `ContentHasher` 流式哈希（1MB 分块，不整载大文件）；`StashStore.insert` 对文件/图片按哈希去重（含同批内），跳过项清理暂存副本、返回已有项目；`addFiles` 改三元组、`addImageData` 返回 `(item?, duplicates)`；拖入/粘贴遇重复提示「已存在，高亮显示」并选中原项目（有重复时不自动收起面板）；录音停止入库后面板自动展开并高亮新录音。新增 3 例去重测试（二次添加跳过、同名同大小不同内容不误判、同批去重清理孤儿副本），58 单测绿。

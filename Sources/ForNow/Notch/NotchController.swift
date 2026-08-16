@@ -273,10 +273,25 @@ final class NotchController: ObservableObject {
                 }
             }
             guard !items.isEmpty else { return }
-            self.store.insert(items)
-            self.feedback("已暂存 \(items.count) 项")
-            if self.openedByDrag { self.scheduleAutoClose() }
+            let duplicates = self.store.insert(items)
+            if duplicates.isEmpty {
+                self.feedback("已暂存 \(items.count) 项")
+                if self.openedByDrag { self.scheduleAutoClose() }
+            } else {
+                // 有重复时不自动收起：高亮已有项目，让用户看到。
+                self.selection = Set(duplicates.map(\.id))
+                self.feedback(self.duplicateFeedback(added: items.count - duplicates.count,
+                                                     duplicates: duplicates))
+            }
         }
+    }
+
+    /// 去重反馈文案：全部重复时强调"已高亮"，部分重复时报告两边数量。
+    private func duplicateFeedback(added: Int, duplicates: [StashItem]) -> String {
+        let existingText = duplicates.count == 1
+            ? "「\(duplicates[0].displayName)」已存在"
+            : "\(duplicates.count) 项已存在"
+        return added > 0 ? "已暂存 \(added) 项，\(existingText)" : "\(existingText)，高亮显示"
     }
 
     /// 单个 provider 按优先级归类：文件 > 图片 > 链接 > 文字。
@@ -336,8 +351,14 @@ final class NotchController: ObservableObject {
 
     private func handlePaste() {
         let content = PasteboardImporter.classify(NSPasteboardReader())
-        if PasteboardCommit.commit(content, to: store) {
-            feedback(pasteMessage(for: content))
+        let result = PasteboardCommit.commit(content, to: store)
+        if result.addedCount > 0 || !result.duplicates.isEmpty {
+            if result.duplicates.isEmpty {
+                feedback(pasteMessage(for: content))
+            } else {
+                selection = Set(result.duplicates.map(\.id))
+                feedback(duplicateFeedback(added: result.addedCount, duplicates: result.duplicates))
+            }
         } else {
             NSSound.beep()
         }
@@ -383,10 +404,13 @@ final class NotchController: ObservableObject {
     // MARK: - 录音
 
     /// 点击 mic：开始录音；录音中再次点击停止并入库。
+    /// 停止入库后自动展开面板并高亮新录音，方便用户看到文件已就位。
     func toggleRecording() {
         if recorder.isRecording {
             if let item = recorder.stopAndStash() {
                 feedback("已录制 · \(item.durationText ?? "")")
+                open()
+                selection = [item.id]
             } else {
                 NSSound.beep()
             }

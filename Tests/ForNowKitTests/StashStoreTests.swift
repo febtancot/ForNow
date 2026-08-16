@@ -65,12 +65,14 @@ final class StashStoreTests: XCTestCase {
     func testFileCopiedIntoStorageWithSizeAndOriginalName() throws {
         let store = makeStore()
         let f = try makeSourceFile(named: "note.txt", contents: "12345")
-        let (added, errors) = store.addFiles(at: [f])
-        XCTAssertTrue(errors.isEmpty)
-        let item = try XCTUnwrap(added.first)
+        let result = store.addFiles(at: [f])
+        XCTAssertTrue(result.errors.isEmpty)
+        XCTAssertTrue(result.duplicates.isEmpty)
+        let item = try XCTUnwrap(result.added.first)
         XCTAssertEqual(item.kind, .file)
         XCTAssertEqual(item.byteSize, 5)
         XCTAssertEqual(item.originalFileName, "note.txt")
+        XCTAssertNotNil(item.contentHash) // 入库时计算内容哈希，供去重
         let url = try XCTUnwrap(store.absoluteURL(for: item))
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
@@ -79,11 +81,11 @@ final class StashStoreTests: XCTestCase {
         let store = makeStore()
         let f1 = try makeSourceFile(named: "dup.txt", contents: "one")
         let f2 = try makeSourceFile(named: "dup.txt", contents: "two", subfolder: "sub")
-        let (added, _) = store.addFiles(at: [f1, f2])
-        XCTAssertEqual(added.count, 2)
-        XCTAssertEqual(Set(added.map(\.displayName)), ["dup.txt"])       // 界面仍显示原名
-        XCTAssertNotEqual(added[0].relativePath, added[1].relativePath)  // 内部唯一
-        for item in added {
+        let result = store.addFiles(at: [f1, f2])
+        XCTAssertEqual(result.added.count, 2)
+        XCTAssertEqual(Set(result.added.map(\.displayName)), ["dup.txt"])       // 界面仍显示原名
+        XCTAssertNotEqual(result.added[0].relativePath, result.added[1].relativePath)  // 内部唯一
+        for item in result.added {
             let url = try XCTUnwrap(store.absoluteURL(for: item))
             XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
         }
@@ -92,9 +94,52 @@ final class StashStoreTests: XCTestCase {
     func testUnreadableSourceProducesError() {
         let store = makeStore()
         let missing = tempRoot.appendingPathComponent("does-not-exist.txt")
-        let (added, errors) = store.addFiles(at: [missing])
-        XCTAssertTrue(added.isEmpty)
-        XCTAssertEqual(errors.count, 1)
+        let result = store.addFiles(at: [missing])
+        XCTAssertTrue(result.added.isEmpty)
+        XCTAssertEqual(result.errors.count, 1)
+    }
+
+    // MARK: 去重
+
+    func testAddingSameFileTwiceSkipsDuplicate() throws {
+        let store = makeStore()
+        let f = try makeSourceFile(named: "dup.txt", contents: "same")
+
+        let first = store.addFiles(at: [f])
+        XCTAssertEqual(first.added.count, 1)
+        XCTAssertTrue(first.duplicates.isEmpty)
+
+        let second = store.addFiles(at: [f])
+        XCTAssertTrue(second.added.isEmpty)
+        XCTAssertEqual(second.duplicates.map(\.id), [first.added[0].id]) // 返回已有项目供高亮
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertNotNil(store.items.first?.contentHash)
+    }
+
+    func testSameNameSameSizeDifferentContentIsNotDuplicate() throws {
+        let store = makeStore()
+        let a = try makeSourceFile(named: "same.txt", contents: "aaaa")
+        let b = try makeSourceFile(named: "same.txt", contents: "bbbb", subfolder: "sub")
+
+        XCTAssertEqual(store.addFiles(at: [a]).added.count, 1)
+        let second = store.addFiles(at: [b])
+        XCTAssertEqual(second.added.count, 1)
+        XCTAssertTrue(second.duplicates.isEmpty)
+        XCTAssertEqual(store.items.count, 2)
+    }
+
+    func testDuplicateInSameBatchKeepsOneAndCleansOrphanCopy() throws {
+        let store = makeStore()
+        let a = try makeSourceFile(named: "x.txt", contents: "data")
+        let b = try makeSourceFile(named: "x.txt", contents: "data", subfolder: "sub")
+
+        let result = store.addFiles(at: [a, b])
+        XCTAssertEqual(result.added.count, 1)
+        XCTAssertEqual(result.duplicates.count, 1)
+        XCTAssertEqual(store.items.count, 1)
+        // 被跳过的重复项，其暂存副本应被清理（Files 下只剩 1 个 uuid 目录）。
+        let stored = try FileManager.default.contentsOfDirectory(at: filesDir, includingPropertiesForKeys: nil)
+        XCTAssertEqual(stored.count, 1)
     }
 
     // MARK: 删除

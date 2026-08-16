@@ -18,6 +18,8 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
     public var relativePath: String?
     public var byteSize: Int64?
     public var originalFileName: String?
+    /// 文件内容 SHA-256（十六进制），用于重复文件识别；目录与旧数据为 nil。
+    public var contentHash: String?
 
     // MARK: 图片
     public var pixelWidth: Int?
@@ -42,6 +44,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
                 relativePath: String? = nil,
                 byteSize: Int64? = nil,
                 originalFileName: String? = nil,
+                contentHash: String? = nil,
                 pixelWidth: Int? = nil,
                 pixelHeight: Int? = nil,
                 text: String? = nil,
@@ -56,6 +59,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
         self.relativePath = relativePath
         self.byteSize = byteSize
         self.originalFileName = originalFileName
+        self.contentHash = contentHash
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
         self.text = text
@@ -76,6 +80,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
         relativePath = try container.decodeIfPresent(String.self, forKey: .relativePath)
         byteSize = try container.decodeIfPresent(Int64.self, forKey: .byteSize)
         originalFileName = try container.decodeIfPresent(String.self, forKey: .originalFileName)
+        contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
         pixelWidth = try container.decodeIfPresent(Int.self, forKey: .pixelWidth)
         pixelHeight = try container.decodeIfPresent(Int.self, forKey: .pixelHeight)
         text = try container.decodeIfPresent(String.self, forKey: .text)
@@ -86,7 +91,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, kind, displayName, createdAt, locked
-        case relativePath, byteSize, originalFileName
+        case relativePath, byteSize, originalFileName, contentHash
         case pixelWidth, pixelHeight, text
         case urlString, linkTitle, durationSeconds
     }
