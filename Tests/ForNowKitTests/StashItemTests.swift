@@ -37,4 +37,38 @@ final class StashItemTests: XCTestCase {
         // ByteCountFormatter 使用不换行空格，比较时忽略空白。
         XCTAssertEqual(img.byteSizeText?.filter { !$0.isWhitespace }, "2KB")
     }
+
+    func testTxtFileNameSanitizesAndCaps() {
+        let slashed = StashItem.makeText("a/b:c")
+        XCTAssertEqual(slashed.txtFileName, "a b c.txt")
+
+        let long = StashItem.makeText(String(repeating: "长", count: 100))
+        XCTAssertEqual(long.txtFileName.count, 44) // 40 字符 + ".txt"
+        XCTAssertTrue(long.txtFileName.hasSuffix(".txt"))
+
+        let blank = StashItem.makeText("   \n  ")
+        XCTAssertEqual(blank.txtFileName, "暂存文本.txt")
+    }
+
+    func testAudioDurationTextFormats() {
+        let audio = StashItem.makeAudio(
+            stored: StoredFile(relativePath: "x/a.m4a", byteSize: 100, originalName: "a.m4a"),
+            durationSeconds: 65.0)
+        XCTAssertEqual(audio.durationText, "1:05")
+        XCTAssertEqual(audio.kind, .audio)
+        XCTAssertEqual(audio.kind.symbolName, "waveform")
+        XCTAssertEqual(audio.kind.localizedName, "录音")
+
+        let short = StashItem.makeAudio(
+            stored: StoredFile(relativePath: "x/b.m4a", byteSize: 100, originalName: "b.m4a"),
+            durationSeconds: 8.0)
+        XCTAssertEqual(short.durationText, "0:08")
+    }
+
+    func testDurationTextStaticFormatter() {
+        XCTAssertEqual(StashItem.durationText(seconds: 0), "0:00")
+        XCTAssertEqual(StashItem.durationText(seconds: 5), "0:05")
+        XCTAssertEqual(StashItem.durationText(seconds: 65.9), "1:05")
+        XCTAssertEqual(StashItem.durationText(seconds: 3_605), "60:05")
+    }
 }

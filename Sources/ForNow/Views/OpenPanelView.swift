@@ -37,6 +37,7 @@ struct OpenPanelView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text("搁这儿").font(.headline)
+            micButton
             Spacer()
             if !store.items.isEmpty {
                 Button(allSelected ? "取消全选" : "全选") { toggleSelectAll() }
@@ -53,6 +54,29 @@ struct OpenPanelView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    /// 头部常驻 mic：空闲时点击开始录音；录音中显示红色停止按钮与实时时长。
+    private var micButton: some View {
+        Button { controller.toggleRecording() } label: {
+            if controller.recorder.isRecording {
+                HStack(spacing: 4) {
+                    Image(systemName: "stop.circle.fill")
+                        .foregroundStyle(.red)
+                    Text("录音中 \(StashItem.durationText(seconds: controller.recorder.elapsedSeconds))")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
+                }
+            } else {
+                Image(systemName: "mic")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
+        .accessibilityLabel(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
     }
 
     private var allSelected: Bool {
@@ -120,12 +144,19 @@ struct OpenPanelView: View {
             Button("清空全部", role: .destructive) { store.removeAll() }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("此操作不可撤销，将删除全部 \(store.count) 个项目及其文件。")
+            Text(clearAllMessage)
         }
+    }
+
+    private var clearAllMessage: String {
+        let lockedCount = store.items.filter(\.locked).count
+        let base = "此操作不可撤销，将删除全部 \(store.count) 个项目及其文件。"
+        return lockedCount > 0 ? base + "（\(lockedCount) 项已锁定将保留）" : base
     }
 }
 
-/// 快速录入输入条：打开面板即自动聚焦，直接打字，回车入库。
+/// 快速录入输入条：点击聚焦后打字，回车入库。打开面板不自动聚焦，
+/// 以免 ⌘V 落入输入条而失效传统的「打开面板 → ⌘V 直接入库」模式。
 /// 绑定独立的 `DraftModel`，打字/粘贴只重绘本视图，不触发面板整体重渲染。
 struct QuickEntryField: View {
     @EnvironmentObject private var draftModel: DraftModel
@@ -160,10 +191,6 @@ struct QuickEntryField: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .onAppear {
-            focused = true
-            draftModel.isTyping = true
-        }
         .onDisappear { draftModel.isTyping = false }
         .onChange(of: focused) { draftModel.isTyping = focused }
     }
@@ -195,7 +222,7 @@ struct EmptyStateView: View {
                 .foregroundStyle(.secondary)
             Text("先搁这儿")
                 .font(.headline)
-            Text("直接打字录入，或拖入文件、按 ⌘V 粘贴")
+            Text("点击输入条打字录入，或拖入文件、按 ⌘V 粘贴")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

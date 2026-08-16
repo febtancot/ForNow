@@ -17,6 +17,10 @@ final class NotchController: ObservableObject {
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
+    /// 录音状态机（mic 点击开始/停止，停止后音频入库）。
+    lazy var recorder = RecordingController(store: store) { [weak self] message in
+        self?.feedback(message)
+    }
 
     let store: StashStore
     let settings: AppSettings
@@ -51,6 +55,7 @@ final class NotchController: ObservableObject {
             .environmentObject(settings)
             .environmentObject(self)
             .environmentObject(draftModel)
+            .environmentObject(recorder)
         let hosting = NotchHostingView(rootView: AnyView(root))
         hosting.autoresizingMask = [.width, .height]
         window.contentView = hosting
@@ -131,10 +136,14 @@ final class NotchController: ObservableObject {
 
     func deleteSelection() {
         guard !selection.isEmpty else { return }
-        let count = selection.count
-        store.remove(ids: selection)
+        let lockedCount = store.items.filter { selection.contains($0.id) && $0.locked }.count
+        let removed = store.remove(ids: selection)
         selection.removeAll()
-        feedback("已删除 \(count) 项")
+        if lockedCount > 0 {
+            feedback(removed > 0 ? "已删除 \(removed) 项，\(lockedCount) 项已锁定" : "所选已锁定，先解锁再删除")
+        } else {
+            feedback("已删除 \(removed) 项")
+        }
     }
 
     func copyItems(_ items: [StashItem]) {
@@ -145,10 +154,27 @@ final class NotchController: ObservableObject {
 
     func removeItems(_ items: [StashItem]) {
         guard !items.isEmpty else { return }
+        let lockedCount = items.filter(\.locked).count
         let ids = Set(items.map(\.id))
-        store.remove(ids: ids)
+        let removed = store.remove(ids: ids)
         selection.subtract(ids)
-        feedback(items.count > 1 ? "已删除 \(items.count) 项" : "已删除")
+        if lockedCount > 0 {
+            feedback(removed > 0 ? "已删除 \(removed) 项，\(lockedCount) 项已锁定" : "已锁定，先解锁再删除")
+        } else {
+            feedback(items.count > 1 ? "已删除 \(items.count) 项" : "已删除")
+        }
+    }
+
+    /// 锁定/解锁一批项目（上下文菜单）。全锁定时整体解锁，否则整体锁定。
+    func toggleLock(_ items: [StashItem]) {
+        guard !items.isEmpty else { return }
+        let allLocked = items.allSatisfy(\.locked)
+        store.setLocked(!allLocked, for: Set(items.map(\.id)))
+        if items.count > 1 {
+            feedback(allLocked ? "已解锁 \(items.count) 项" : "已锁定 \(items.count) 项")
+        } else {
+            feedback(allLocked ? "已解锁" : "已锁定")
+        }
     }
 
     // MARK: - 几何
@@ -247,10 +273,25 @@ final class NotchController: ObservableObject {
                 }
             }
             guard !items.isEmpty else { return }
-            self.store.insert(items)
-            self.feedback("已暂存 \(items.count) 项")
-            if self.openedByDrag { self.scheduleAutoClose() }
+            let duplicates = self.store.insert(items)
+            if duplicates.isEmpty {
+                self.feedback("已暂存 \(items.count) 项")
+                if self.openedByDrag { self.scheduleAutoClose() }
+            } else {
+                // 有重复时不自动收起：高亮已有项目，让用户看到。
+                self.selection = Set(duplicates.map(\.id))
+                self.feedback(self.duplicateFeedback(added: items.count - duplicates.count,
+                                                     duplicates: duplicates))
+            }
         }
+    }
+
+    /// 去重反馈文案：全部重复时强调"已高亮"，部分重复时报告两边数量。
+    private func duplicateFeedback(added: Int, duplicates: [StashItem]) -> String {
+        let existingText = duplicates.count == 1
+            ? "「\(duplicates[0].displayName)」已存在"
+            : "\(duplicates.count) 项已存在"
+        return added > 0 ? "已暂存 \(added) 项，\(existingText)" : "\(existingText)，高亮显示"
     }
 
     /// 单个 provider 按优先级归类：文件 > 图片 > 链接 > 文字。
@@ -310,8 +351,14 @@ final class NotchController: ObservableObject {
 
     private func handlePaste() {
         let content = PasteboardImporter.classify(NSPasteboardReader())
-        if PasteboardCommit.commit(content, to: store) {
-            feedback(pasteMessage(for: content))
+        let result = PasteboardCommit.commit(content, to: store)
+        if result.addedCount > 0 || !result.duplicates.isEmpty {
+            if result.duplicates.isEmpty {
+                feedback(pasteMessage(for: content))
+            } else {
+                selection = Set(result.duplicates.map(\.id))
+                feedback(duplicateFeedback(added: result.addedCount, duplicates: result.duplicates))
+            }
         } else {
             NSSound.beep()
         }
@@ -351,6 +398,24 @@ final class NotchController: ObservableObject {
             close()
         } else {
             draftModel.draft = ""
+        }
+    }
+
+    // MARK: - 录音
+
+    /// 点击 mic：开始录音；录音中再次点击停止并入库。
+    /// 停止入库后自动展开面板并高亮新录音，方便用户看到文件已就位。
+    func toggleRecording() {
+        if recorder.isRecording {
+            if let item = recorder.stopAndStash() {
+                feedback("已录制 · \(item.durationText ?? "")")
+                open()
+                selection = [item.id]
+            } else {
+                NSSound.beep()
+            }
+        } else {
+            recorder.start()
         }
     }
 

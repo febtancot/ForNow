@@ -65,12 +65,14 @@ final class StashStoreTests: XCTestCase {
     func testFileCopiedIntoStorageWithSizeAndOriginalName() throws {
         let store = makeStore()
         let f = try makeSourceFile(named: "note.txt", contents: "12345")
-        let (added, errors) = store.addFiles(at: [f])
-        XCTAssertTrue(errors.isEmpty)
-        let item = try XCTUnwrap(added.first)
+        let result = store.addFiles(at: [f])
+        XCTAssertTrue(result.errors.isEmpty)
+        XCTAssertTrue(result.duplicates.isEmpty)
+        let item = try XCTUnwrap(result.added.first)
         XCTAssertEqual(item.kind, .file)
         XCTAssertEqual(item.byteSize, 5)
         XCTAssertEqual(item.originalFileName, "note.txt")
+        XCTAssertNotNil(item.contentHash) // 入库时计算内容哈希，供去重
         let url = try XCTUnwrap(store.absoluteURL(for: item))
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
@@ -79,11 +81,11 @@ final class StashStoreTests: XCTestCase {
         let store = makeStore()
         let f1 = try makeSourceFile(named: "dup.txt", contents: "one")
         let f2 = try makeSourceFile(named: "dup.txt", contents: "two", subfolder: "sub")
-        let (added, _) = store.addFiles(at: [f1, f2])
-        XCTAssertEqual(added.count, 2)
-        XCTAssertEqual(Set(added.map(\.displayName)), ["dup.txt"])       // 界面仍显示原名
-        XCTAssertNotEqual(added[0].relativePath, added[1].relativePath)  // 内部唯一
-        for item in added {
+        let result = store.addFiles(at: [f1, f2])
+        XCTAssertEqual(result.added.count, 2)
+        XCTAssertEqual(Set(result.added.map(\.displayName)), ["dup.txt"])       // 界面仍显示原名
+        XCTAssertNotEqual(result.added[0].relativePath, result.added[1].relativePath)  // 内部唯一
+        for item in result.added {
             let url = try XCTUnwrap(store.absoluteURL(for: item))
             XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
         }
@@ -92,9 +94,52 @@ final class StashStoreTests: XCTestCase {
     func testUnreadableSourceProducesError() {
         let store = makeStore()
         let missing = tempRoot.appendingPathComponent("does-not-exist.txt")
-        let (added, errors) = store.addFiles(at: [missing])
-        XCTAssertTrue(added.isEmpty)
-        XCTAssertEqual(errors.count, 1)
+        let result = store.addFiles(at: [missing])
+        XCTAssertTrue(result.added.isEmpty)
+        XCTAssertEqual(result.errors.count, 1)
+    }
+
+    // MARK: 去重
+
+    func testAddingSameFileTwiceSkipsDuplicate() throws {
+        let store = makeStore()
+        let f = try makeSourceFile(named: "dup.txt", contents: "same")
+
+        let first = store.addFiles(at: [f])
+        XCTAssertEqual(first.added.count, 1)
+        XCTAssertTrue(first.duplicates.isEmpty)
+
+        let second = store.addFiles(at: [f])
+        XCTAssertTrue(second.added.isEmpty)
+        XCTAssertEqual(second.duplicates.map(\.id), [first.added[0].id]) // 返回已有项目供高亮
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertNotNil(store.items.first?.contentHash)
+    }
+
+    func testSameNameSameSizeDifferentContentIsNotDuplicate() throws {
+        let store = makeStore()
+        let a = try makeSourceFile(named: "same.txt", contents: "aaaa")
+        let b = try makeSourceFile(named: "same.txt", contents: "bbbb", subfolder: "sub")
+
+        XCTAssertEqual(store.addFiles(at: [a]).added.count, 1)
+        let second = store.addFiles(at: [b])
+        XCTAssertEqual(second.added.count, 1)
+        XCTAssertTrue(second.duplicates.isEmpty)
+        XCTAssertEqual(store.items.count, 2)
+    }
+
+    func testDuplicateInSameBatchKeepsOneAndCleansOrphanCopy() throws {
+        let store = makeStore()
+        let a = try makeSourceFile(named: "x.txt", contents: "data")
+        let b = try makeSourceFile(named: "x.txt", contents: "data", subfolder: "sub")
+
+        let result = store.addFiles(at: [a, b])
+        XCTAssertEqual(result.added.count, 1)
+        XCTAssertEqual(result.duplicates.count, 1)
+        XCTAssertEqual(store.items.count, 1)
+        // 被跳过的重复项，其暂存副本应被清理（Files 下只剩 1 个 uuid 目录）。
+        let stored = try FileManager.default.contentsOfDirectory(at: filesDir, includingPropertiesForKeys: nil)
+        XCTAssertEqual(stored.count, 1)
     }
 
     // MARK: 删除
@@ -119,6 +164,97 @@ final class StashStoreTests: XCTestCase {
         store.removeAll()
         XCTAssertTrue(store.items.isEmpty)
         XCTAssertEqual(store.totalByteSize, 0)
+    }
+
+    // MARK: 锁定
+
+    func testRemoveAllKeepsLockedItemsAndFiles() throws {
+        let store = makeStore()
+        let f = try makeSourceFile(named: "keep.txt", contents: "data")
+        let fileItem = try XCTUnwrap(store.addFiles(at: [f]).added.first)
+        let textItem = store.addText("unlocked")
+        store.setLocked(true, for: [fileItem.id])
+
+        store.removeAll()
+
+        XCTAssertEqual(store.items.map(\.id), [fileItem.id])
+        XCTAssertNotNil(store.absoluteURL(for: fileItem))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(store.absoluteURL(for: fileItem)).path))
+        XCTAssertFalse(store.items.contains(where: { $0.id == textItem.id }))
+    }
+
+    func testRemoveSkipsLockedItems() throws {
+        let store = makeStore()
+        let locked = store.addText("locked")
+        let normal = store.addText("normal")
+        store.setLocked(true, for: [locked.id])
+
+        let removed = store.remove(ids: [locked.id, normal.id])
+
+        XCTAssertEqual(removed, 1)
+        XCTAssertEqual(store.items.map(\.id), [locked.id])
+        XCTAssertTrue(store.items[0].locked)
+    }
+
+    func testLockedStatePersistsAcrossReload() {
+        let store = makeStore()
+        let item = store.addText("pin me")
+        store.setLocked(true, for: [item.id])
+        store.setLocked(false, for: [item.id])
+        store.setLocked(true, for: [item.id])
+
+        let reloaded = makeStore()
+        reloaded.load()
+        XCTAssertEqual(reloaded.items.count, 1)
+        XCTAssertEqual(reloaded.items.first?.locked, true)
+    }
+
+    // MARK: 录音
+
+    func testAddAudioStoresFileWithDuration() throws {
+        let store = makeStore()
+        let item = try store.addAudio(data: Data([0x01, 0x02, 0x03]), suggestedName: "录音-test", durationSeconds: 12.5)
+
+        XCTAssertEqual(item.kind, .audio)
+        XCTAssertEqual(item.durationSeconds, 12.5)
+        XCTAssertEqual(item.originalFileName, "录音-test.m4a")
+        XCTAssertTrue(item.displayName.hasPrefix("录音 · "))
+        let url = try XCTUnwrap(store.absoluteURL(for: item))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(try Data(contentsOf: url), Data([0x01, 0x02, 0x03]))
+    }
+
+    func testAudioPersistsAcrossReload() throws {
+        let store = makeStore()
+        let item = try store.addAudio(data: Data([0x00]), suggestedName: "录音-persist", durationSeconds: 3)
+        store.setLocked(true, for: [item.id])
+
+        let reloaded = makeStore()
+        reloaded.load()
+        XCTAssertEqual(reloaded.items.count, 1)
+        XCTAssertEqual(reloaded.items.first?.kind, .audio)
+        XCTAssertEqual(reloaded.items.first?.locked, true)
+    }
+
+    func testLegacyMetadataWithoutLockedKeyLoadsAsUnlocked() throws {
+        let legacyJSON = """
+        [
+          {
+            "id": "\(UUID().uuidString)",
+            "kind": "text",
+            "displayName": "旧数据",
+            "createdAt": "2026-08-16T10:00:00Z",
+            "text": "旧数据内容"
+          }
+        ]
+        """
+        try Data(legacyJSON.utf8).write(to: metadataURL)
+
+        let store = makeStore()
+        store.load()
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.items.first?.locked, false)
+        XCTAssertEqual(store.items.first?.text, "旧数据内容")
     }
 
     // MARK: 持久化（模拟重启）

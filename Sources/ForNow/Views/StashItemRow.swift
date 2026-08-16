@@ -37,7 +37,14 @@ struct StashItemRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
-            if hovering {
+            if item.locked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .help("已锁定，不会被清空")
+                    .accessibilityLabel("已锁定")
+            }
+            if hovering, !item.locked {
                 Button {
                     controller.removeItems([item])
                 } label: {
@@ -78,7 +85,7 @@ struct StashItemRow: View {
         .onDrag { ItemActions.dragProvider(item, store: store) }
         .contextMenu { contextMenu }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(kindLabel)，\(item.displayName)\(isSelected ? "，已选中" : "")")
+        .accessibilityLabel("\(kindLabel)，\(item.displayName)\(isSelected ? "，已选中" : "")\(item.locked ? "，已锁定" : "")")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
@@ -89,19 +96,28 @@ struct StashItemRow: View {
         } label: {
             Label(targets.count > 1 ? "复制 \(targets.count) 项" : "复制", systemImage: "doc.on.doc")
         }
+        Button {
+            controller.toggleLock(targets)
+        } label: {
+            if targets.allSatisfy(\.locked) {
+                Label(targets.count > 1 ? "解锁 \(targets.count) 项" : "解锁", systemImage: "lock.open")
+            } else {
+                Label(targets.count > 1 ? "锁定 \(targets.count) 项" : "锁定", systemImage: "lock")
+            }
+        }
         if item.kind == .text {
             Button { controller.previewText(item) } label: {
                 Label("预览原文", systemImage: "eye")
             }
         }
-        if item.kind == .file || item.kind == .image || item.kind == .link {
+        if item.kind == .file || item.kind == .image || item.kind == .link || item.kind == .audio {
             Button {
                 ItemActions.open(item, store: store)
             } label: {
                 Label("打开", systemImage: "arrow.up.forward.app")
             }
         }
-        if item.kind == .file || item.kind == .image {
+        if item.kind == .file || item.kind == .image || item.kind == .audio {
             Button {
                 controller.quickLook(item)
             } label: {
@@ -150,6 +166,9 @@ struct StashItemRow: View {
 
     private var subtitle: String {
         var parts: [String] = [kindLabel]
+        if item.kind == .audio, let duration = item.durationText {
+            parts.append(duration)
+        }
         if let dims = item.pixelSizeText {
             parts.append(dims)
         } else if let size = item.byteSizeText {
@@ -157,7 +176,7 @@ struct StashItemRow: View {
         } else if item.kind == .link, let host = item.urlString.flatMap({ URL(string: $0)?.host }) {
             parts.append(host)
         }
-        parts.append(item.createdAt.formatted(date: .omitted, time: .shortened))
+        parts.append(item.createdAt.formatted(date: .abbreviated, time: .shortened))
         return parts.joined(separator: " · ")
     }
 }

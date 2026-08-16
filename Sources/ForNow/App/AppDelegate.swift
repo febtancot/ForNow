@@ -19,6 +19,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 设置变化时递增，供 ForNowApp 的 body 读取以维持注入。
     var settingsVersion = 0
 
+    /// 打开设置并把窗口置前：App 是 LSUIElement 菜单栏程序，点击状态栏菜单不会
+    /// 激活 App，设置窗口会落在其他 App 窗口后面。
+    func openSettingsWindow() {
+        onOpenSettings?()
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { NSApp.keyWindow?.makeKeyAndOrderFront(nil) }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
@@ -26,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let status = StatusItemController(store: store, settings: settings,
                                           updater: updaterModel.controller)
         status.onTogglePanel = { [weak notch] in notch?.toggle() }
-        status.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
+        status.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
 
         self.notchController = notch
         self.statusController = status

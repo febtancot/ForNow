@@ -52,6 +52,7 @@ struct SettingsView: View {
             }
             Section {
                 Button("检查更新") { updater.checkForUpdates() }
+                Link("查看更新日志", destination: UpdaterModel.changelogURL)
             }
         }
         .formStyle(.grouped)

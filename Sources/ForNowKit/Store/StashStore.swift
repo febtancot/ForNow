@@ -64,8 +64,9 @@ public final class StashStore: ObservableObject {
     // MARK: - 写入（文件 / 图片）
 
     /// 复制一批文件/文件夹进暂存目录，作为一批插入顶部（保持顺序）。失败的逐个跳过并回传错误。
+    /// 与已有项目内容相同的文件不重复入库，对应已有项目放入 `duplicates`。
     @discardableResult
-    public func addFiles(at urls: [URL]) -> (added: [StashItem], errors: [Error]) {
+    public func addFiles(at urls: [URL]) -> (added: [StashItem], errors: [Error], duplicates: [StashItem]) {
         var created: [StashItem] = []
         var errors: [Error] = []
         for url in urls {
@@ -75,16 +76,29 @@ public final class StashStore: ObservableObject {
                 errors.append(error)
             }
         }
-        insert(created)
-        return (created, errors)
+        let duplicates = insert(created)
+        // 返回仓库中实际入库的副本（含内容哈希），保持批内顺序。
+        let added = created.compactMap { staged in items.first(where: { $0.id == staged.id }) }
+        return (added, errors, duplicates)
     }
 
-    /// 将剪贴板/内存中的图片数据写入暂存目录并入库。
+    /// 将剪贴板/内存中的图片数据写入暂存目录并入库；内容重复时不入库，
+    /// `item` 为 nil、对应已有项目放入 `duplicates`。
     @discardableResult
-    public func addImageData(_ data: Data, suggestedName: String, fileExtension: String) throws -> StashItem {
+    public func addImageData(_ data: Data, suggestedName: String, fileExtension: String) throws -> (item: StashItem?, duplicates: [StashItem]) {
         let stored = try fileStorage.importData(data, suggestedName: suggestedName, fileExtension: fileExtension)
         let pixelSize = ImageMetadata.pixelSize(ofFileAt: fileStorage.absoluteURL(for: stored.relativePath))
         let item = StashItem.makeImage(stored: stored, pixelSize: pixelSize)
+        let duplicates = insert([item])
+        let storedItem = duplicates.isEmpty ? items.first(where: { $0.id == item.id }) : nil
+        return (storedItem, duplicates)
+    }
+
+    /// 将录音数据写入暂存目录并入库（m4a）。
+    @discardableResult
+    public func addAudio(data: Data, suggestedName: String, durationSeconds: Double) throws -> StashItem {
+        let stored = try fileStorage.importData(data, suggestedName: suggestedName, fileExtension: "m4a")
+        let item = StashItem.makeAudio(stored: stored, durationSeconds: durationSeconds)
         insert([item])
         return item
     }
@@ -117,32 +131,75 @@ public final class StashStore: ObservableObject {
 
     // MARK: - 通用插入
 
-    public func insert(_ newItems: [StashItem]) {
-        guard !newItems.isEmpty else { return }
-        items.insert(contentsOf: newItems, at: 0)
+    /// 插入一批项目到顶部（保持批内顺序）。文件/图片按内容哈希去重：
+    /// 与已有（或本批内）项目内容相同的跳过入库、清理其暂存副本，
+    /// 对应的已有项目作为结果返回，供界面提示与高亮。
+    @discardableResult
+    public func insert(_ newItems: [StashItem]) -> [StashItem] {
+        guard !newItems.isEmpty else { return [] }
+        var duplicates: [StashItem] = []
+        var toAdd: [StashItem] = []
+        for var item in newItems {
+            if item.kind == .file || item.kind == .image, let url = absoluteURL(for: item) {
+                let hash = ContentHasher.sha256Hex(ofFileAt: url)
+                item.contentHash = hash
+                if let hash, let existing = (items + toAdd).first(where: { $0.contentHash == hash }) {
+                    if let relativePath = item.relativePath {
+                        try? fileStorage.remove(relativePath: relativePath)
+                    }
+                    duplicates.append(existing)
+                    continue
+                }
+            }
+            toAdd.append(item)
+        }
+        items.insert(contentsOf: toAdd, at: 0)
         persist()
+        return duplicates
     }
 
-    // MARK: - 删除
+    // MARK: - 删除（锁定项被跳过，需先解锁）
 
-    public func remove(ids: Set<UUID>) {
-        guard !ids.isEmpty else { return }
-        for item in items where ids.contains(item.id) {
+    /// 删除指定项目（锁定项跳过），返回实际删除的数量。
+    @discardableResult
+    public func remove(ids: Set<UUID>) -> Int {
+        guard !ids.isEmpty else { return 0 }
+        var removed = 0
+        for item in items where ids.contains(item.id) && !item.locked {
+            if let relativePath = item.relativePath {
+                try? fileStorage.remove(relativePath: relativePath)
+            }
+            removed += 1
+        }
+        items.removeAll { ids.contains($0.id) && !$0.locked }
+        persist()
+        return removed
+    }
+
+    @discardableResult
+    public func remove(_ item: StashItem) -> Int {
+        remove(ids: [item.id])
+    }
+
+    /// 清空所有未锁定项目；锁定项及其文件保留。
+    public func removeAll() {
+        for item in items where !item.locked {
             if let relativePath = item.relativePath {
                 try? fileStorage.remove(relativePath: relativePath)
             }
         }
-        items.removeAll { ids.contains($0.id) }
+        items.removeAll { !$0.locked }
         persist()
     }
 
-    public func remove(_ item: StashItem) {
-        remove(ids: [item.id])
-    }
+    // MARK: - 锁定
 
-    public func removeAll() {
-        try? fileStorage.removeAll()
-        items.removeAll()
+    /// 设置一批项目的锁定状态（锁定项不受清空与删除影响）。
+    public func setLocked(_ locked: Bool, for ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        for index in items.indices where ids.contains(items[index].id) {
+            items[index].locked = locked
+        }
         persist()
     }
 
