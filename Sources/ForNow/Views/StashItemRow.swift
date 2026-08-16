@@ -173,7 +173,7 @@ struct StashItemRow: View {
         } else if item.kind == .link, let host = item.urlString.flatMap({ URL(string: $0)?.host }) {
             parts.append(host)
         }
-        parts.append(item.createdAt.formatted(date: .omitted, time: .shortened))
+        parts.append(item.createdAt.formatted(date: .abbreviated, time: .shortened))
         return parts.joined(separator: " · ")
     }
 }
