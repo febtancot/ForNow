@@ -79,12 +79,37 @@ enum ItemActions {
             }
             return NSItemProvider()
         case .text:
-            return NSItemProvider(object: (item.text ?? item.displayName) as NSString)
+            return textDragProvider(for: item)
         case .link:
             if let string = item.urlString, let url = URL(string: string) {
                 return NSItemProvider(object: url as NSURL)
             }
             return NSItemProvider(object: (item.urlString ?? item.displayName) as NSString)
+        }
+    }
+
+    /// 文字拖出：同时提供 .txt 文件（拖入 Finder 得到文本文件，而非二进制 textClipping）
+    /// 与纯文本（拖入文本框直接插入文字）。
+    private static func textDragProvider(for item: StashItem) -> NSItemProvider {
+        let text = item.text ?? item.displayName
+        guard let fileURL = makeTempTextFile(named: item.txtFileName, id: item.id, contents: text) else {
+            return NSItemProvider(object: text as NSString)
+        }
+        let provider = NSItemProvider(contentsOf: fileURL) ?? NSItemProvider()
+        provider.registerObject(text as NSString, visibility: .all)
+        return provider
+    }
+
+    private static func makeTempTextFile(named name: String, id: UUID, contents: String) -> URL? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ForNowDrag/\(id.uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(name)
+            try Data(contents.utf8).write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
         }
     }
 }

@@ -37,4 +37,16 @@ final class StashItemTests: XCTestCase {
         // ByteCountFormatter 使用不换行空格，比较时忽略空白。
         XCTAssertEqual(img.byteSizeText?.filter { !$0.isWhitespace }, "2KB")
     }
+
+    func testTxtFileNameSanitizesAndCaps() {
+        let slashed = StashItem.makeText("a/b:c")
+        XCTAssertEqual(slashed.txtFileName, "a b c.txt")
+
+        let long = StashItem.makeText(String(repeating: "长", count: 100))
+        XCTAssertEqual(long.txtFileName.count, 44) // 40 字符 + ".txt"
+        XCTAssertTrue(long.txtFileName.hasSuffix(".txt"))
+
+        let blank = StashItem.makeText("   \n  ")
+        XCTAssertEqual(blank.txtFileName, "暂存文本.txt")
+    }
 }

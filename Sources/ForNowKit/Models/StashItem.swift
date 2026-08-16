@@ -165,4 +165,14 @@ public extension StashItem {
         guard let bytes = byteSize else { return nil }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
+
+    /// 拖出为文件时的安全文件名（基于摘要，去除路径分隔符，截断到 40 字符）。
+    var txtFileName: String {
+        let cleaned = displayName
+            .replacingOccurrences(of: "/", with: " ")
+            .replacingOccurrences(of: ":", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let truncated = String(cleaned.prefix(40))
+        return (truncated.isEmpty ? "暂存文本" : truncated) + ".txt"
+    }
 }
