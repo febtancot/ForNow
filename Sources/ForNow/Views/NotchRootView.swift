@@ -35,7 +35,7 @@ struct ClosedPillView: View {
             Color.white.opacity(0.001)
             ClosedCapsuleBar(hovering: hovering)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, 1)
+                .padding(.bottom, 2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -56,6 +56,8 @@ struct ClosedPillView: View {
 struct ClosedCapsuleBar: View {
     @EnvironmentObject private var controller: NotchController
     @EnvironmentObject private var store: StashStore
+    /// 直接观察录音器：录音状态/计时的变化只重绘本胶囊条，不触发面板整体重渲染。
+    @EnvironmentObject private var recorder: RecordingController
     let hovering: Bool
 
     var body: some View {
@@ -74,21 +76,21 @@ struct ClosedCapsuleBar: View {
     private var micSegment: some View {
         Button { controller.toggleRecording() } label: {
             HStack(spacing: 4) {
-                Image(systemName: controller.recorder.isRecording ? "mic.fill" : "mic")
+                Image(systemName: recorder.isRecording ? "mic.fill" : "mic")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(controller.recorder.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.white))
-                if controller.recorder.isRecording {
-                    Text(StashItem.durationText(seconds: controller.recorder.elapsedSeconds))
+                    .foregroundStyle(recorder.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.white))
+                if recorder.isRecording {
+                    Text(StashItem.durationText(seconds: recorder.elapsedSeconds))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
-        .help(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
-        .accessibilityLabel(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
+        .help(recorder.isRecording ? "停止录音并暂存" : "开始录音")
+        .accessibilityLabel(recorder.isRecording ? "停止录音并暂存" : "开始录音")
     }
 
     private var traySegment: some View {
@@ -102,7 +104,7 @@ struct ClosedCapsuleBar: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
         .help("打开暂存面板")

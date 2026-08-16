@@ -14,6 +14,8 @@ final class NotchController: ObservableObject {
     @Published var toast: String?
     /// 当前选中的项目 id（支持单选/多选/全选）。
     @Published var selection: Set<UUID> = []
+    /// 面板列表滚动到顶部的请求计数（如录音入库后展示新项目）。
+    @Published var scrollToTopRequest = 0
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
@@ -411,6 +413,7 @@ final class NotchController: ObservableObject {
                 feedback("已录制 · \(item.durationText ?? "")")
                 open()
                 selection = [item.id]
+                scrollToTopRequest += 1 // 列表若已滚动，把新录音滚回视野
             } else {
                 NSSound.beep()
             }

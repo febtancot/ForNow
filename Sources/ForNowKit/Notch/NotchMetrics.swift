@@ -36,8 +36,9 @@ public struct NotchMetrics: Equatable, Sendable {
     /// 收起状态：覆盖刘海宽度、并向下延伸出一条可点击/接收拖入的热区（刘海缺口本身无可点击像素，
     /// 真正能命中的是缺口正下方这条带子）。无刘海时为顶部中央的小标签（PRD §7 的备用热区）。
     ///
-    /// - Parameter interactiveBelow: 刘海缺口下方额外的可命中高度。
-    public func closedFrame(fallbackWidth: CGFloat = 190, interactiveBelow: CGFloat = 18) -> CGRect {
+    /// - Parameter interactiveBelow: 刘海缺口下方额外的可命中高度。需容纳收起态胶囊
+    ///   （约 19pt 高 + 2pt 边距），否则胶囊顶部会伸进菜单栏/刘海带被遮挡。
+    public func closedFrame(fallbackWidth: CGFloat = 190, interactiveBelow: CGFloat = 26) -> CGRect {
         let width = hasNotch ? max(notchWidth, 160) : fallbackWidth
         let height: CGFloat = hasNotch ? (notchHeight + interactiveBelow) : 34
         return topCenteredFrame(width: width, height: height)
