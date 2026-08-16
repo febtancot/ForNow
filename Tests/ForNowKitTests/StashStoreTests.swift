@@ -142,6 +142,31 @@ final class StashStoreTests: XCTestCase {
         XCTAssertEqual(stored.count, 1)
     }
 
+    func testLoadBackfillsContentHashForLegacyItems() throws {
+        // 先用正常路径入库一个文件（带哈希），再把元数据中的哈希键抹掉，模拟去重功能上线前的旧数据。
+        let store = makeStore()
+        let f = try makeSourceFile(named: "legacy.txt", contents: "legacy content")
+        _ = store.addFiles(at: [f])
+
+        let metadata = try JSONSerialization.jsonObject(with: Data(contentsOf: metadataURL)) as! [[String: Any]]
+        let legacy = metadata.map { dict -> [String: Any] in
+            var copy = dict
+            copy.removeValue(forKey: "contentHash")
+            return copy
+        }
+        try JSONSerialization.data(withJSONObject: legacy).write(to: metadataURL)
+
+        // 加载时补算哈希，并写回元数据。
+        let reloaded = makeStore()
+        reloaded.load()
+        XCTAssertNotNil(reloaded.items.first?.contentHash)
+
+        // 再次加载（读回写后的元数据），哈希仍在。
+        let reloadedAgain = makeStore()
+        reloadedAgain.load()
+        XCTAssertNotNil(reloadedAgain.items.first?.contentHash)
+    }
+
     // MARK: 删除
 
     func testRemoveDeletesItemAndUnderlyingFile() throws {

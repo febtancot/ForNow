@@ -5,6 +5,8 @@ import ForNowKit
 struct OpenPanelView: View {
     @EnvironmentObject private var store: StashStore
     @EnvironmentObject private var controller: NotchController
+    /// 直接观察录音器：头部 mic 按钮的样式与计时随录音状态实时刷新。
+    @EnvironmentObject private var recorder: RecordingController
     @State private var confirmingClear = false
 
     var body: some View {
@@ -59,11 +61,11 @@ struct OpenPanelView: View {
     /// 头部常驻 mic：空闲时点击开始录音；录音中显示红色停止按钮与实时时长。
     private var micButton: some View {
         Button { controller.toggleRecording() } label: {
-            if controller.recorder.isRecording {
+            if recorder.isRecording {
                 HStack(spacing: 4) {
                     Image(systemName: "stop.circle.fill")
                         .foregroundStyle(.red)
-                    Text("录音中 \(StashItem.durationText(seconds: controller.recorder.elapsedSeconds))")
+                    Text("录音中 \(StashItem.durationText(seconds: recorder.elapsedSeconds))")
                         .font(.caption)
                         .monospacedDigit()
                         .foregroundStyle(.primary)
@@ -75,8 +77,8 @@ struct OpenPanelView: View {
             }
         }
         .buttonStyle(.plain)
-        .help(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
-        .accessibilityLabel(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
+        .help(recorder.isRecording ? "停止录音并暂存" : "开始录音")
+        .accessibilityLabel(recorder.isRecording ? "停止录音并暂存" : "开始录音")
     }
 
     private var allSelected: Bool {
@@ -92,13 +94,21 @@ struct OpenPanelView: View {
             EmptyStateView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ScrollView {
-                LazyVStack(spacing: 6) {
-                    ForEach(store.items) { item in
-                        StashItemRow(item: item)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(store.items) { item in
+                            StashItemRow(item: item)
+                        }
+                    }
+                    .padding(10)
+                }
+                // 程序化置顶请求（如录音入库后展示新项目）——列表滚动时把最新项滚回视野。
+                .onChange(of: controller.scrollToTopRequest) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(store.items.first?.id, anchor: .top)
                     }
                 }
-                .padding(10)
             }
         }
     }

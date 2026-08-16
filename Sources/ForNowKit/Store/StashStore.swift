@@ -30,6 +30,23 @@ public final class StashStore: ObservableObject {
 
     public func load() {
         items = (try? metadataStore.load()) ?? []
+        backfillContentHashes()
+    }
+
+    /// 为缺少内容哈希的历史项目补算哈希并持久化（一次性迁移），
+    /// 使去重对去重功能上线前入库的旧文件同样生效。
+    private func backfillContentHashes() {
+        var changed = false
+        for index in items.indices where items[index].contentHash == nil {
+            let item = items[index]
+            if item.kind == .file || item.kind == .image,
+               let url = absoluteURL(for: item),
+               let hash = ContentHasher.sha256Hex(ofFileAt: url) {
+                items[index].contentHash = hash
+                changed = true
+            }
+        }
+        if changed { persist() }
     }
 
     public var count: Int { items.count }
