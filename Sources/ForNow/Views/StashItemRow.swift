@@ -110,14 +110,14 @@ struct StashItemRow: View {
                 Label("预览原文", systemImage: "eye")
             }
         }
-        if item.kind == .file || item.kind == .image || item.kind == .link {
+        if item.kind == .file || item.kind == .image || item.kind == .link || item.kind == .audio {
             Button {
                 ItemActions.open(item, store: store)
             } label: {
                 Label("打开", systemImage: "arrow.up.forward.app")
             }
         }
-        if item.kind == .file || item.kind == .image {
+        if item.kind == .file || item.kind == .image || item.kind == .audio {
             Button {
                 controller.quickLook(item)
             } label: {
@@ -166,6 +166,9 @@ struct StashItemRow: View {
 
     private var subtitle: String {
         var parts: [String] = [kindLabel]
+        if item.kind == .audio, let duration = item.durationText {
+            parts.append(duration)
+        }
         if let dims = item.pixelSizeText {
             parts.append(dims)
         } else if let size = item.byteSizeText {

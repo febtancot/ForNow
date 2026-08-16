@@ -89,6 +89,15 @@ public final class StashStore: ObservableObject {
         return item
     }
 
+    /// 将录音数据写入暂存目录并入库（m4a）。
+    @discardableResult
+    public func addAudio(data: Data, suggestedName: String, durationSeconds: Double) throws -> StashItem {
+        let stored = try fileStorage.importData(data, suggestedName: suggestedName, fileExtension: "m4a")
+        let item = StashItem.makeAudio(stored: stored, durationSeconds: durationSeconds)
+        insert([item])
+        return item
+    }
+
     // MARK: - 预备项目（复制文件但不插入，供拖入/粘贴时按顺序批量插入）
 
     /// 复制文件进暂存目录并生成项目，但不插入列表。

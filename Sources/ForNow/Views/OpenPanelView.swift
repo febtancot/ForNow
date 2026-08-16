@@ -37,6 +37,18 @@ struct OpenPanelView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text("搁这儿").font(.headline)
+            if controller.recorder.isRecording {
+                Button { controller.toggleRecording() } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stop.circle.fill")
+                            .foregroundStyle(.red)
+                        Text("录音中").font(.caption)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("停止录音并暂存")
+                .accessibilityLabel("停止录音并暂存")
+            }
             Spacer()
             if !store.items.isEmpty {
                 Button(allSelected ? "取消全选" : "全选") { toggleSelectAll() }

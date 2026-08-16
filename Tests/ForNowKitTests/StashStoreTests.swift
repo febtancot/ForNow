@@ -164,6 +164,33 @@ final class StashStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.items.first?.locked, true)
     }
 
+    // MARK: 录音
+
+    func testAddAudioStoresFileWithDuration() throws {
+        let store = makeStore()
+        let item = try store.addAudio(data: Data([0x01, 0x02, 0x03]), suggestedName: "录音-test", durationSeconds: 12.5)
+
+        XCTAssertEqual(item.kind, .audio)
+        XCTAssertEqual(item.durationSeconds, 12.5)
+        XCTAssertEqual(item.originalFileName, "录音-test.m4a")
+        XCTAssertTrue(item.displayName.hasPrefix("录音 · "))
+        let url = try XCTUnwrap(store.absoluteURL(for: item))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(try Data(contentsOf: url), Data([0x01, 0x02, 0x03]))
+    }
+
+    func testAudioPersistsAcrossReload() throws {
+        let store = makeStore()
+        let item = try store.addAudio(data: Data([0x00]), suggestedName: "录音-persist", durationSeconds: 3)
+        store.setLocked(true, for: [item.id])
+
+        let reloaded = makeStore()
+        reloaded.load()
+        XCTAssertEqual(reloaded.items.count, 1)
+        XCTAssertEqual(reloaded.items.first?.kind, .audio)
+        XCTAssertEqual(reloaded.items.first?.locked, true)
+    }
+
     func testLegacyMetadataWithoutLockedKeyLoadsAsUnlocked() throws {
         let legacyJSON = """
         [

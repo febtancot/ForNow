@@ -8,7 +8,7 @@ enum ItemActions {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         switch item.kind {
-        case .file, .image:
+        case .file, .image, .audio:
             if let url = store.absoluteURL(for: item) {
                 pasteboard.writeObjects([url as NSURL])
             }
@@ -32,7 +32,7 @@ enum ItemActions {
         var objects: [NSPasteboardWriting] = []
         for item in items {
             switch item.kind {
-            case .file, .image:
+            case .file, .image, .audio:
                 if let url = store.absoluteURL(for: item) { objects.append(url as NSURL) }
             case .link:
                 if let string = item.urlString, let url = URL(string: string) {
@@ -51,7 +51,7 @@ enum ItemActions {
 
     static func open(_ item: StashItem, store: StashStore) {
         switch item.kind {
-        case .file, .image:
+        case .file, .image, .audio:
             if let url = store.absoluteURL(for: item) {
                 NSWorkspace.shared.open(url)
             }
@@ -73,7 +73,7 @@ enum ItemActions {
     /// 拖出用的 provider。文件/图片提供文件 URL（拖入 Finder / 上传区）；文字/链接提供对应对象。
     static func dragProvider(_ item: StashItem, store: StashStore) -> NSItemProvider {
         switch item.kind {
-        case .file, .image:
+        case .file, .image, .audio:
             if let url = store.absoluteURL(for: item), let provider = NSItemProvider(contentsOf: url) {
                 return provider
             }

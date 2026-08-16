@@ -127,6 +127,14 @@ public extension StashItem {
                   pixelHeight: pixelSize.map { Int($0.height.rounded()) })
     }
 
+    static func makeAudio(stored: StoredFile, durationSeconds: Double?, createdAt: Date = Date(), id: UUID = UUID()) -> StashItem {
+        let time = createdAt.formatted(date: .omitted, time: .shortened)
+        return StashItem(id: id, kind: .audio, displayName: "录音 · \(time)", createdAt: createdAt,
+                         relativePath: stored.relativePath, byteSize: stored.byteSize,
+                         originalFileName: stored.originalName,
+                         durationSeconds: durationSeconds)
+    }
+
     /// 文字项目取前两行非空内容、去空白，作为界面摘要。
     static func summary(from raw: String) -> String {
         let nonEmptyLines = raw
@@ -164,6 +172,12 @@ public extension StashItem {
     var byteSizeText: String? {
         guard let bytes = byteSize else { return nil }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    /// 录音时长文案，如 "0:05"、"1:23"。
+    var durationText: String? {
+        guard let seconds = durationSeconds else { return nil }
+        return String(format: "%d:%02d", Int(seconds) / 60, Int(seconds) % 60)
     }
 
     /// 拖出为文件时的安全文件名（基于摘要，去除路径分隔符，截断到 40 字符）。

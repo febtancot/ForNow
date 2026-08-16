@@ -6,6 +6,7 @@ public enum StashItemKind: String, Codable, Sendable, CaseIterable {
     case image
     case text
     case link
+    case audio
 
     /// SF Symbol 名称，供列表图标使用。
     public var symbolName: String {
@@ -14,6 +15,7 @@ public enum StashItemKind: String, Codable, Sendable, CaseIterable {
         case .image: return "photo"
         case .text: return "text.alignleft"
         case .link: return "link"
+        case .audio: return "waveform"
         }
     }
 
@@ -24,6 +26,7 @@ public enum StashItemKind: String, Codable, Sendable, CaseIterable {
         case .image: return "图片"
         case .text: return "文字"
         case .link: return "链接"
+        case .audio: return "录音"
         }
     }
 }

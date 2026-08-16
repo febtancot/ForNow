@@ -17,6 +17,10 @@ final class NotchController: ObservableObject {
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
+    /// 录音状态机（mic 点击开始/停止，停止后音频入库）。
+    lazy var recorder = RecordingController(store: store) { [weak self] message in
+        self?.feedback(message)
+    }
 
     let store: StashStore
     let settings: AppSettings
@@ -51,6 +55,7 @@ final class NotchController: ObservableObject {
             .environmentObject(settings)
             .environmentObject(self)
             .environmentObject(draftModel)
+            .environmentObject(recorder)
         let hosting = NotchHostingView(rootView: AnyView(root))
         hosting.autoresizingMask = [.width, .height]
         window.contentView = hosting
@@ -372,6 +377,21 @@ final class NotchController: ObservableObject {
             close()
         } else {
             draftModel.draft = ""
+        }
+    }
+
+    // MARK: - 录音
+
+    /// 点击 mic：开始录音；录音中再次点击停止并入库。
+    func toggleRecording() {
+        if recorder.isRecording {
+            if let item = recorder.stopAndStash() {
+                feedback("已录制 · \(item.durationText ?? "")")
+            } else {
+                NSSound.beep()
+            }
+        } else {
+            recorder.start()
         }
     }
 

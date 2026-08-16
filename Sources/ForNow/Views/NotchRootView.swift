@@ -36,6 +36,10 @@ struct ClosedPillView: View {
             pill
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, 1)
+            MicButton()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(.leading, 8)
+                .padding(.bottom, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -68,5 +72,25 @@ struct ClosedPillView: View {
         .padding(.vertical, 5)
         .background(Capsule().fill(Color.black.opacity(hovering ? 0.92 : 0.7)))
         .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+    }
+}
+
+/// 刘海左侧的录音按钮：点击开始录音，再点停止并入库。
+struct MicButton: View {
+    @EnvironmentObject private var controller: NotchController
+
+    var body: some View {
+        Button { controller.toggleRecording() } label: {
+            Image(systemName: controller.recorder.isRecording ? "mic.fill" : "mic")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(controller.recorder.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.white))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.black.opacity(0.7)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
+        .accessibilityLabel(controller.recorder.isRecording ? "停止录音并暂存" : "开始录音")
     }
 }
