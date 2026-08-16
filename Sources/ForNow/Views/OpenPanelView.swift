@@ -125,7 +125,8 @@ struct OpenPanelView: View {
     }
 }
 
-/// 快速录入输入条：打开面板即自动聚焦，直接打字，回车入库。
+/// 快速录入输入条：点击聚焦后打字，回车入库。打开面板不自动聚焦，
+/// 以免 ⌘V 落入输入条而失效传统的「打开面板 → ⌘V 直接入库」模式。
 /// 绑定独立的 `DraftModel`，打字/粘贴只重绘本视图，不触发面板整体重渲染。
 struct QuickEntryField: View {
     @EnvironmentObject private var draftModel: DraftModel
@@ -160,10 +161,6 @@ struct QuickEntryField: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .onAppear {
-            focused = true
-            draftModel.isTyping = true
-        }
         .onDisappear { draftModel.isTyping = false }
         .onChange(of: focused) { draftModel.isTyping = focused }
     }
@@ -195,7 +192,7 @@ struct EmptyStateView: View {
                 .foregroundStyle(.secondary)
             Text("先搁这儿")
                 .font(.headline)
-            Text("直接打字录入，或拖入文件、按 ⌘V 粘贴")
+            Text("点击输入条打字录入，或拖入文件、按 ⌘V 粘贴")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
