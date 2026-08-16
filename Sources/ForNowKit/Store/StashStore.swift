@@ -39,7 +39,7 @@ public final class StashStore: ObservableObject {
         var changed = false
         for index in items.indices where items[index].contentHash == nil {
             let item = items[index]
-            if item.kind == .file || item.kind == .image,
+            if item.isContentDeduplicatedFile,
                let url = absoluteURL(for: item),
                let hash = ContentHasher.sha256Hex(ofFileAt: url) {
                 items[index].contentHash = hash
@@ -60,6 +60,19 @@ public final class StashStore: ObservableObject {
     public func absoluteURL(for item: StashItem) -> URL? {
         guard let relativePath = item.relativePath else { return nil }
         return fileStorage.absoluteURL(for: relativePath)
+    }
+
+    /// 若 URL 正是仓库中某个项目的受管文件/目录，则返回该项目。
+    /// 这条路径级防线用于阻止把面板里的项目直接拖回面板；目录无需依赖内容哈希。
+    public func existingItem(forManagedURL url: URL) -> StashItem? {
+        guard url.isFileURL else { return nil }
+        let candidate = canonicalFileURL(url)
+        let root = canonicalFileURL(fileStorage.rootDirectory)
+        guard candidate.path == root.path || candidate.path.hasPrefix(root.path + "/") else { return nil }
+        return items.first { item in
+            guard let managedURL = absoluteURL(for: item) else { return false }
+            return canonicalFileURL(managedURL) == candidate
+        }
     }
 
     // MARK: - 写入（文字 / 链接）
@@ -86,14 +99,19 @@ public final class StashStore: ObservableObject {
     public func addFiles(at urls: [URL]) -> (added: [StashItem], errors: [Error], duplicates: [StashItem]) {
         var created: [StashItem] = []
         var errors: [Error] = []
+        var managedDuplicates: [StashItem] = []
         for url in urls {
+            if let existing = existingItem(forManagedURL: url) {
+                managedDuplicates.append(existing)
+                continue
+            }
             do {
                 created.append(try makeItem(forFileAt: url))
             } catch {
                 errors.append(error)
             }
         }
-        let duplicates = insert(created)
+        let duplicates = uniqueItems(managedDuplicates + insert(created))
         // 返回仓库中实际入库的副本（含内容哈希），保持批内顺序。
         let added = created.compactMap { staged in items.first(where: { $0.id == staged.id }) }
         return (added, errors, duplicates)
@@ -116,8 +134,8 @@ public final class StashStore: ObservableObject {
     public func addAudio(data: Data, suggestedName: String, durationSeconds: Double) throws -> StashItem {
         let stored = try fileStorage.importData(data, suggestedName: suggestedName, fileExtension: "m4a")
         let item = StashItem.makeAudio(stored: stored, durationSeconds: durationSeconds)
-        insert([item])
-        return item
+        let duplicates = insert([item])
+        return duplicates.first ?? items.first(where: { $0.id == item.id }) ?? item
     }
 
     // MARK: - 预备项目（复制文件但不插入，供拖入/粘贴时按顺序批量插入）
@@ -134,6 +152,12 @@ public final class StashStore: ObservableObject {
         return StashItem.makeImage(stored: stored, pixelSize: pixelSize)
     }
 
+    /// 将音频 provider 的数据表示写入暂存目录，但暂不插入列表。
+    public func stageAudioData(_ data: Data, suggestedName: String, fileExtension: String) throws -> StashItem {
+        let stored = try fileStorage.importData(data, suggestedName: suggestedName, fileExtension: fileExtension)
+        return StashItem.makeAudio(stored: stored, durationSeconds: nil, displayName: stored.originalName)
+    }
+
     private func makeItem(forFileAt url: URL) throws -> StashItem {
         let stored = try fileStorage.importFile(at: url)
         let kind = StashItem.inferredKind(forFileName: stored.originalName, isDirectory: url.hasDirectoryPath)
@@ -141,6 +165,8 @@ public final class StashStore: ObservableObject {
         case .image:
             let pixelSize = ImageMetadata.pixelSize(ofFileAt: fileStorage.absoluteURL(for: stored.relativePath))
             return StashItem.makeImage(stored: stored, pixelSize: pixelSize)
+        case .audio:
+            return StashItem.makeAudio(stored: stored, durationSeconds: nil, displayName: stored.originalName)
         default:
             return StashItem.makeFile(stored: stored)
         }
@@ -148,7 +174,7 @@ public final class StashStore: ObservableObject {
 
     // MARK: - 通用插入
 
-    /// 插入一批项目到顶部（保持批内顺序）。文件/图片按内容哈希去重：
+    /// 插入一批项目到顶部（保持批内顺序）。文件/图片/音频按内容哈希去重：
     /// 与已有（或本批内）项目内容相同的跳过入库、清理其暂存副本，
     /// 对应的已有项目作为结果返回，供界面提示与高亮。
     @discardableResult
@@ -157,7 +183,7 @@ public final class StashStore: ObservableObject {
         var duplicates: [StashItem] = []
         var toAdd: [StashItem] = []
         for var item in newItems {
-            if item.kind == .file || item.kind == .image, let url = absoluteURL(for: item) {
+            if item.isContentDeduplicatedFile, let url = absoluteURL(for: item) {
                 let hash = ContentHasher.sha256Hex(ofFileAt: url)
                 item.contentHash = hash
                 if let hash, let existing = (items + toAdd).first(where: { $0.contentHash == hash }) {
@@ -224,5 +250,20 @@ public final class StashStore: ObservableObject {
 
     private func persist() {
         try? metadataStore.save(items)
+    }
+
+    private func canonicalFileURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    private func uniqueItems(_ candidates: [StashItem]) -> [StashItem] {
+        var seen: Set<UUID> = []
+        return candidates.filter { seen.insert($0.id).inserted }
+    }
+}
+
+private extension StashItem {
+    var isContentDeduplicatedFile: Bool {
+        kind == .file || kind == .image || kind == .audio
     }
 }

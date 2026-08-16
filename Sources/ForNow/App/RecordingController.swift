@@ -49,9 +49,11 @@ final class RecordingController: ObservableObject {
     @discardableResult
     func stopAndStash() -> StashItem? {
         guard isRecording, let recorder else { return nil }
-        recorder.stop()
+        // AVAudioRecorder 停止后 currentTime 在部分真机/系统版本会归零。
+        // 必须先快照时长，再停止并读取已经完成封装的 m4a 文件。
         isRecording = false
         let duration = recorder.currentTime
+        recorder.stop()
         guard duration >= 0.5, let url = tempURL, let data = try? Data(contentsOf: url) else {
             cleanup()
             return nil

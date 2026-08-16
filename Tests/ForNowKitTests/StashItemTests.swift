@@ -17,6 +17,8 @@ final class StashItemTests: XCTestCase {
         XCTAssertEqual(StashItem.inferredKind(forFileName: "a.png", isDirectory: false), .image)
         XCTAssertEqual(StashItem.inferredKind(forFileName: "a.JPG", isDirectory: false), .image)
         XCTAssertEqual(StashItem.inferredKind(forFileName: "a.heic", isDirectory: false), .image)
+        XCTAssertEqual(StashItem.inferredKind(forFileName: "memo.m4a", isDirectory: false), .audio)
+        XCTAssertEqual(StashItem.inferredKind(forFileName: "voice.MP3", isDirectory: false), .audio)
         XCTAssertEqual(StashItem.inferredKind(forFileName: "a.pdf", isDirectory: false), .file)
         XCTAssertEqual(StashItem.inferredKind(forFileName: "noext", isDirectory: false), .file)
         XCTAssertEqual(StashItem.inferredKind(forFileName: "folder.png", isDirectory: true), .file)

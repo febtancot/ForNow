@@ -269,20 +269,28 @@ final class NotchController: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             var items: [StashItem] = []
+            var managedDuplicates: [StashItem] = []
             for provider in providers {
-                if let item = await self.stagedItem(for: provider) {
+                switch await self.stagedItem(for: provider) {
+                case .item(let item):
                     items.append(item)
+                case .duplicate(let existing):
+                    managedDuplicates.append(existing)
+                case nil:
+                    break
                 }
             }
-            guard !items.isEmpty else { return }
-            let duplicates = self.store.insert(items)
+            let contentDuplicates = self.store.insert(items)
+            let duplicates = self.uniqueItems(managedDuplicates + contentDuplicates)
+            guard !items.isEmpty || !duplicates.isEmpty else { return }
+            let addedCount = items.count - contentDuplicates.count
             if duplicates.isEmpty {
-                self.feedback("已暂存 \(items.count) 项")
+                self.feedback("已暂存 \(addedCount) 项")
                 if self.openedByDrag { self.scheduleAutoClose() }
             } else {
                 // 有重复时不自动收起：高亮已有项目，让用户看到。
                 self.selection = Set(duplicates.map(\.id))
-                self.feedback(self.duplicateFeedback(added: items.count - duplicates.count,
+                self.feedback(self.duplicateFeedback(added: addedCount,
                                                      duplicates: duplicates))
             }
         }
@@ -296,21 +304,45 @@ final class NotchController: ObservableObject {
         return added > 0 ? "已暂存 \(added) 项，\(existingText)" : "\(existingText)，高亮显示"
     }
 
-    /// 单个 provider 按优先级归类：文件 > 图片 > 链接 > 文字。
-    private func stagedItem(for provider: NSItemProvider) async -> StashItem? {
+    private enum StagedDrop {
+        case item(StashItem)
+        case duplicate(StashItem)
+    }
+
+    private struct TemporaryDropFile {
+        let url: URL
+        let directory: URL
+    }
+
+    /// 单个 provider 按优先级归类：文件 > 音频文件承诺 > 图片 > 链接 > 文字。
+    private func stagedItem(for provider: NSItemProvider) async -> StagedDrop? {
         let url = await loadURL(provider)
         if let url, url.isFileURL {
-            return try? store.stageFile(at: url)
+            if let existing = store.existingItem(forManagedURL: url) {
+                return .duplicate(existing)
+            }
+            return (try? store.stageFile(at: url)).map(StagedDrop.item)
+        }
+        if let audioFile = await loadAudioFileRepresentation(provider) {
+            defer { try? FileManager.default.removeItem(at: audioFile.directory) }
+            return (try? store.stageFile(at: audioFile.url)).map(StagedDrop.item)
+        }
+        if let audio = await loadAudioData(provider) {
+            return (try? store.stageAudioData(audio.data,
+                                              suggestedName: audio.name,
+                                              fileExtension: audio.ext)).map(StagedDrop.item)
         }
         if let image = await loadImage(provider) {
-            return try? store.stageImageData(image.data, suggestedName: "拖入图片", fileExtension: image.ext)
+            return (try? store.stageImageData(image.data,
+                                              suggestedName: "拖入图片",
+                                              fileExtension: image.ext)).map(StagedDrop.item)
         }
         if let url {
-            return StashItem.makeLink(urlString: url.absoluteString, title: nil)
+            return .item(StashItem.makeLink(urlString: url.absoluteString, title: nil))
         }
         if let text = await loadText(provider),
            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return StashItem.makeText(text)
+            return .item(StashItem.makeText(text))
         }
         return nil
     }
@@ -333,6 +365,73 @@ final class NotchController: ObservableObject {
         }
     }
 
+    /// 读取语音备忘录等来源提供的音频文件承诺。provider 回调返回的 URL 只在回调期间有效，
+    /// 因此先复制到自有临时目录，随后再交给 StashStore 入库。
+    private func loadAudioFileRepresentation(_ provider: NSItemProvider) async -> TemporaryDropFile? {
+        guard let type = preferredAudioType(for: provider) else { return nil }
+        let suggestedName = provider.suggestedName
+        let preferredExtension = type.preferredFilenameExtension ?? "m4a"
+        return await withCheckedContinuation { continuation in
+            provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { sourceURL, _ in
+                guard let sourceURL else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let directory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("ForNowDrop/\(UUID().uuidString)", isDirectory: true)
+                let name = Self.dropFileName(suggested: suggestedName,
+                                             fallback: sourceURL.lastPathComponent,
+                                             fileExtension: preferredExtension)
+                let destination = directory.appendingPathComponent(name)
+                do {
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try FileManager.default.copyItem(at: sourceURL, to: destination)
+                    continuation.resume(returning: TemporaryDropFile(url: destination, directory: directory))
+                } catch {
+                    try? FileManager.default.removeItem(at: directory)
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    /// 少数 provider 只暴露音频 data representation；作为文件承诺读取失败时的回退。
+    private func loadAudioData(_ provider: NSItemProvider) async -> (data: Data, name: String, ext: String)? {
+        guard let type = preferredAudioType(for: provider) else { return nil }
+        let ext = type.preferredFilenameExtension ?? "m4a"
+        let name = Self.dropFileName(suggested: provider.suggestedName,
+                                     fallback: "拖入录音",
+                                     fileExtension: ext)
+        let data: Data? = await withCheckedContinuation { continuation in
+            provider.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
+                continuation.resume(returning: data)
+            }
+        }
+        guard let data else { return nil }
+        return (data, name, ext)
+    }
+
+    private func preferredAudioType(for provider: NSItemProvider) -> UTType? {
+        let types = provider.registeredTypeIdentifiers
+            .compactMap(UTType.init)
+            .filter { $0.conforms(to: .audio) }
+        return types.first(where: { $0.preferredFilenameExtension != nil }) ?? types.first
+    }
+
+    private nonisolated static func dropFileName(suggested: String?,
+                                                  fallback: String,
+                                                  fileExtension: String) -> String {
+        let trimmed = suggested?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = trimmed.flatMap { $0.isEmpty ? nil : $0 } ?? fallback
+        var name = URL(fileURLWithPath: baseName).lastPathComponent
+            .replacingOccurrences(of: ":", with: "-")
+        let ext = fileExtension.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        if !ext.isEmpty, (name as NSString).pathExtension.isEmpty {
+            name += "." + ext
+        }
+        return name
+    }
+
     private func loadImage(_ provider: NSItemProvider) async -> (data: Data, ext: String)? {
         let imageTypes = provider.registeredTypeIdentifiers
             .compactMap { UTType($0) }
@@ -347,6 +446,11 @@ final class NotchController: ObservableObject {
         }
         guard let data else { return nil }
         return (data, type.preferredFilenameExtension ?? "png")
+    }
+
+    private func uniqueItems(_ candidates: [StashItem]) -> [StashItem] {
+        var seen: Set<UUID> = []
+        return candidates.filter { seen.insert($0.id).inserted }
     }
 
     // MARK: - 粘贴入库

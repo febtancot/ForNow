@@ -132,9 +132,13 @@ public extension StashItem {
                   pixelHeight: pixelSize.map { Int($0.height.rounded()) })
     }
 
-    static func makeAudio(stored: StoredFile, durationSeconds: Double?, createdAt: Date = Date(), id: UUID = UUID()) -> StashItem {
+    static func makeAudio(stored: StoredFile,
+                          durationSeconds: Double?,
+                          displayName: String? = nil,
+                          createdAt: Date = Date(),
+                          id: UUID = UUID()) -> StashItem {
         let time = createdAt.formatted(date: .omitted, time: .shortened)
-        return StashItem(id: id, kind: .audio, displayName: "录音 · \(time)", createdAt: createdAt,
+        return StashItem(id: id, kind: .audio, displayName: displayName ?? "录音 · \(time)", createdAt: createdAt,
                          relativePath: stored.relativePath, byteSize: stored.byteSize,
                          originalFileName: stored.originalName,
                          durationSeconds: durationSeconds)
@@ -153,12 +157,13 @@ public extension StashItem {
         return String(condensed.prefix(120))
     }
 
-    /// 依据扩展名判断文件是图片还是普通文件；目录一律按文件处理。
+    /// 依据扩展名判断文件是图片、音频还是普通文件；目录一律按文件处理。
     static func inferredKind(forFileName name: String, isDirectory: Bool) -> StashItemKind {
         if isDirectory { return .file }
         let ext = (name as NSString).pathExtension
-        if !ext.isEmpty, let type = UTType(filenameExtension: ext), type.conforms(to: .image) {
-            return .image
+        if !ext.isEmpty, let type = UTType(filenameExtension: ext) {
+            if type.conforms(to: .image) { return .image }
+            if type.conforms(to: .audio) { return .audio }
         }
         return .file
     }

@@ -142,6 +142,57 @@ final class StashStoreTests: XCTestCase {
         XCTAssertEqual(stored.count, 1)
     }
 
+    func testDraggingManagedDirectoryBackDoesNotCreateDuplicate() throws {
+        let store = makeStore()
+        let sourceDirectory = tempRoot.appendingPathComponent("source-folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        try Data("inside".utf8).write(to: sourceDirectory.appendingPathComponent("note.txt"))
+        let original = try XCTUnwrap(store.addFiles(at: [sourceDirectory]).added.first)
+        let managedURL = try XCTUnwrap(store.absoluteURL(for: original))
+
+        let draggedBack = store.addFiles(at: [managedURL])
+
+        XCTAssertTrue(draggedBack.added.isEmpty)
+        XCTAssertTrue(draggedBack.errors.isEmpty)
+        XCTAssertEqual(draggedBack.duplicates.map(\.id), [original.id])
+        XCTAssertEqual(store.items.count, 1)
+        let storedDirectories = try FileManager.default.contentsOfDirectory(at: filesDir,
+                                                                            includingPropertiesForKeys: nil)
+        XCTAssertEqual(storedDirectories.count, 1)
+    }
+
+    func testDraggingManagedAudioBackDoesNotCreateDuplicate() throws {
+        let store = makeStore()
+        let original = try store.addAudio(data: Data([0x01, 0x02, 0x03]),
+                                          suggestedName: "录音-original",
+                                          durationSeconds: 2)
+        let managedURL = try XCTUnwrap(store.absoluteURL(for: original))
+
+        let draggedBack = store.addFiles(at: [managedURL])
+
+        XCTAssertTrue(draggedBack.added.isEmpty)
+        XCTAssertTrue(draggedBack.errors.isEmpty)
+        XCTAssertEqual(draggedBack.duplicates.map(\.id), [original.id])
+        XCTAssertEqual(store.items.count, 1)
+    }
+
+    func testAudioContentHashPreventsDuplicateFromExternalCopy() throws {
+        let store = makeStore()
+        let bytes = Data([0xAA, 0xBB, 0xCC])
+        let original = try store.addAudio(data: bytes,
+                                          suggestedName: "录音-original",
+                                          durationSeconds: 3)
+        let externalCopy = tempRoot.appendingPathComponent("copy.m4a")
+        try bytes.write(to: externalCopy)
+
+        let duplicate = store.addFiles(at: [externalCopy])
+
+        XCTAssertNotNil(original.contentHash)
+        XCTAssertTrue(duplicate.added.isEmpty)
+        XCTAssertEqual(duplicate.duplicates.map(\.id), [original.id])
+        XCTAssertEqual(store.items.count, 1)
+    }
+
     func testLoadBackfillsContentHashForLegacyItems() throws {
         // 先用正常路径入库一个文件（带哈希），再把元数据中的哈希键抹掉，模拟去重功能上线前的旧数据。
         let store = makeStore()
@@ -165,6 +216,27 @@ final class StashStoreTests: XCTestCase {
         let reloadedAgain = makeStore()
         reloadedAgain.load()
         XCTAssertNotNil(reloadedAgain.items.first?.contentHash)
+    }
+
+    func testLoadBackfillsContentHashForLegacyAudio() throws {
+        let store = makeStore()
+        _ = try store.addAudio(data: Data([0x10, 0x20, 0x30]),
+                               suggestedName: "录音-legacy",
+                               durationSeconds: 4)
+
+        let metadata = try JSONSerialization.jsonObject(with: Data(contentsOf: metadataURL)) as! [[String: Any]]
+        let legacy = metadata.map { dict -> [String: Any] in
+            var copy = dict
+            copy.removeValue(forKey: "contentHash")
+            return copy
+        }
+        try JSONSerialization.data(withJSONObject: legacy).write(to: metadataURL)
+
+        let reloaded = makeStore()
+        reloaded.load()
+
+        XCTAssertEqual(reloaded.items.first?.kind, .audio)
+        XCTAssertNotNil(reloaded.items.first?.contentHash)
     }
 
     // MARK: 删除
@@ -244,6 +316,7 @@ final class StashStoreTests: XCTestCase {
         XCTAssertEqual(item.durationSeconds, 12.5)
         XCTAssertEqual(item.originalFileName, "录音-test.m4a")
         XCTAssertTrue(item.displayName.hasPrefix("录音 · "))
+        XCTAssertNotNil(item.contentHash)
         let url = try XCTUnwrap(store.absoluteURL(for: item))
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
         XCTAssertEqual(try Data(contentsOf: url), Data([0x01, 0x02, 0x03]))
