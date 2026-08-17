@@ -12,15 +12,18 @@ struct StashItemRow: View {
     @State private var lastClickAt: Date?
 
     private var isSelected: Bool { controller.isSelected(item.id) }
+    private var isAudioActive: Bool { item.kind == .audio && audioPlayer.isActive(item.id) }
+    private var isAudioPlaying: Bool { isAudioActive && audioPlayer.isPlaying }
+
+    private var isDirectory: Bool {
+        guard item.kind == .file, let url = store.absoluteURL(for: item) else { return false }
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+    }
 
     /// 类型标签：`.file` 若实际是目录则显示"文件夹"。
     private var kindLabel: String {
-        if item.kind == .file, let url = store.absoluteURL(for: item) {
-            var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
-                return "文件夹"
-            }
-        }
+        if isDirectory { return "文件夹" }
         return item.kind.localizedName
     }
 
@@ -32,7 +35,7 @@ struct StashItemRow: View {
                 Text(item.displayName)
                     .lineLimit(1)
                     .font(.system(size: 12, weight: .medium))
-                if item.kind == .audio, audioPlayer.isActive(item.id) {
+                if isAudioActive {
                     activeAudioProgress
                 } else {
                     Text(subtitle)
@@ -42,9 +45,6 @@ struct StashItemRow: View {
                 }
             }
             Spacer(minLength: 4)
-            if item.kind == .audio {
-                audioPlayButton
-            }
             if item.locked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10))
@@ -94,6 +94,7 @@ struct StashItemRow: View {
         .contextMenu { contextMenu }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(kindLabel)，\(item.displayName)\(isSelected ? "，已选中" : "")\(item.locked ? "，已锁定" : "")")
+        .accessibilityAction(named: Text(primaryActionTitle)) { performPrimaryAction() }
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
@@ -162,18 +163,6 @@ struct StashItemRow: View {
         }
     }
 
-    private var audioPlayButton: some View {
-        let playing = audioPlayer.isPlaying && audioPlayer.isActive(item.id)
-        return Button { controller.toggleAudioPlayback(item) } label: {
-            Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill")
-                .font(.system(size: 18))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(playing ? Color.accentColor : Color.secondary)
-        .help(playing ? "暂停" : "播放")
-        .accessibilityLabel(playing ? "暂停 \(item.displayName)" : "播放 \(item.displayName)")
-    }
-
     private var activeAudioProgress: some View {
         HStack(spacing: 6) {
             Slider(value: Binding(get: { audioPlayer.currentTime },
@@ -190,7 +179,29 @@ struct StashItemRow: View {
         }
     }
 
-    @ViewBuilder private var thumbnail: some View {
+    private var thumbnail: some View {
+        ZStack {
+            thumbnailContent
+            if showsThumbnailAction {
+                Button { performThumbnailAction() } label: {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.black.opacity(0.58))
+                        .overlay {
+                            Image(systemName: thumbnailActionSymbol)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                }
+                .buttonStyle(.plain)
+                .help(thumbnailActionTitle)
+                .accessibilityLabel("\(thumbnailActionTitle) \(item.displayName)")
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: showsThumbnailAction)
+    }
+
+    @ViewBuilder private var thumbnailContent: some View {
         if item.kind == .image, let url = store.absoluteURL(for: item) {
             ThumbnailView(url: url)
         } else if item.kind == .file, let url = store.absoluteURL(for: item) {
@@ -205,6 +216,56 @@ struct StashItemRow: View {
                     Image(systemName: item.kind.symbolName)
                         .foregroundStyle(.secondary)
                 )
+        }
+    }
+
+    private var showsThumbnailAction: Bool {
+        guard item.kind == .audio || item.kind == .file || item.kind == .image else { return false }
+        return hovering || isAudioActive
+    }
+
+    private var thumbnailActionSymbol: String {
+        if item.kind == .audio { return isAudioPlaying ? "pause.fill" : "play.fill" }
+        if isDirectory { return "arrow.up.forward" }
+        return "eye.fill"
+    }
+
+    private var thumbnailActionTitle: String {
+        if item.kind == .audio { return isAudioPlaying ? "暂停" : "播放" }
+        if isDirectory { return "打开文件夹" }
+        return "快速预览"
+    }
+
+    private var primaryActionTitle: String {
+        switch item.kind {
+        case .audio: return isAudioPlaying ? "暂停" : "播放"
+        case .file: return isDirectory ? "打开文件夹" : "快速预览"
+        case .image: return "快速预览"
+        case .text: return "预览原文"
+        case .link: return "打开链接"
+        }
+    }
+
+    private func performThumbnailAction() {
+        switch item.kind {
+        case .audio:
+            controller.toggleAudioPlayback(item)
+        case .file where isDirectory:
+            ItemActions.open(item, store: store)
+        case .file, .image:
+            controller.quickLook(item)
+        case .text, .link:
+            break
+        }
+    }
+
+    private func performPrimaryAction() {
+        if item.kind == .file, !isDirectory {
+            controller.quickLook(item)
+        } else if item.kind == .image {
+            controller.quickLook(item)
+        } else {
+            activate()
         }
     }
 
