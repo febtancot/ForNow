@@ -46,6 +46,10 @@ final class StatusItemController: NSObject {
     @objc private func openSettings() {
         onOpenSettings()
     }
+
+    @objc private func openChangelog() {
+        NSWorkspace.shared.open(UpdaterModel.changelogURL)
+    }
 }
 
 extension StatusItemController: NSMenuDelegate {
@@ -71,6 +75,13 @@ extension StatusItemController: NSMenuDelegate {
             keyEquivalent: "")
         checkUpdates.target = updater
         menu.addItem(checkUpdates)
+
+        let changelog = NSMenuItem(
+            title: "查看更新日志…",
+            action: #selector(openChangelog),
+            keyEquivalent: "")
+        changelog.target = self
+        menu.addItem(changelog)
 
         let settingsItem = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self

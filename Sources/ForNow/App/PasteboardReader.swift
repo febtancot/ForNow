@@ -52,22 +52,26 @@ struct NSPasteboardReader: PasteboardReading {
 /// 将归类后的剪贴板内容写入仓库。
 @MainActor
 enum PasteboardCommit {
-    /// - Returns: 是否有内容被添加。
+    /// - Returns: 实际入库数量与遇到的重复项（对应仓库中已有的项目，未入库）。
     @discardableResult
-    static func commit(_ content: PasteboardContent, to store: StashStore) -> Bool {
+    static func commit(_ content: PasteboardContent, to store: StashStore) -> (addedCount: Int, duplicates: [StashItem]) {
         switch content {
         case .files(let urls):
-            return !store.addFiles(at: urls).added.isEmpty
+            let result = store.addFiles(at: urls)
+            return (result.added.count, result.duplicates)
         case .image(let data, let ext):
-            return (try? store.addImageData(data, suggestedName: "剪贴板图片", fileExtension: ext)) != nil
+            if let result = try? store.addImageData(data, suggestedName: "剪贴板图片", fileExtension: ext) {
+                return (result.item != nil ? 1 : 0, result.duplicates)
+            }
+            return (0, [])
         case .link(let url, let title):
             store.addLink(urlString: url, title: title)
-            return true
+            return (1, [])
         case .text(let text):
             store.addText(text)
-            return true
+            return (1, [])
         case .empty:
-            return false
+            return (0, [])
         }
     }
 }

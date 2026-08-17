@@ -14,9 +14,15 @@ final class NotchController: ObservableObject {
     @Published var toast: String?
     /// 当前选中的项目 id（支持单选/多选/全选）。
     @Published var selection: Set<UUID> = []
+    /// 面板列表滚动到顶部的请求计数（如录音入库后展示新项目）。
+    @Published var scrollToTopRequest = 0
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
+    /// 录音状态机（mic 点击开始/停止，停止后音频入库）。
+    lazy var recorder = RecordingController(store: store) { [weak self] message in
+        self?.feedback(message)
+    }
 
     let store: StashStore
     let settings: AppSettings
@@ -51,6 +57,7 @@ final class NotchController: ObservableObject {
             .environmentObject(settings)
             .environmentObject(self)
             .environmentObject(draftModel)
+            .environmentObject(recorder)
         let hosting = NotchHostingView(rootView: AnyView(root))
         hosting.autoresizingMask = [.width, .height]
         window.contentView = hosting
@@ -131,10 +138,14 @@ final class NotchController: ObservableObject {
 
     func deleteSelection() {
         guard !selection.isEmpty else { return }
-        let count = selection.count
-        store.remove(ids: selection)
+        let lockedCount = store.items.filter { selection.contains($0.id) && $0.locked }.count
+        let removed = store.remove(ids: selection)
         selection.removeAll()
-        feedback("已删除 \(count) 项")
+        if lockedCount > 0 {
+            feedback(removed > 0 ? "已删除 \(removed) 项，\(lockedCount) 项已锁定" : "所选已锁定，先解锁再删除")
+        } else {
+            feedback("已删除 \(removed) 项")
+        }
     }
 
     func copyItems(_ items: [StashItem]) {
@@ -145,10 +156,27 @@ final class NotchController: ObservableObject {
 
     func removeItems(_ items: [StashItem]) {
         guard !items.isEmpty else { return }
+        let lockedCount = items.filter(\.locked).count
         let ids = Set(items.map(\.id))
-        store.remove(ids: ids)
+        let removed = store.remove(ids: ids)
         selection.subtract(ids)
-        feedback(items.count > 1 ? "已删除 \(items.count) 项" : "已删除")
+        if lockedCount > 0 {
+            feedback(removed > 0 ? "已删除 \(removed) 项，\(lockedCount) 项已锁定" : "已锁定，先解锁再删除")
+        } else {
+            feedback(items.count > 1 ? "已删除 \(items.count) 项" : "已删除")
+        }
+    }
+
+    /// 锁定/解锁一批项目（上下文菜单）。全锁定时整体解锁，否则整体锁定。
+    func toggleLock(_ items: [StashItem]) {
+        guard !items.isEmpty else { return }
+        let allLocked = items.allSatisfy(\.locked)
+        store.setLocked(!allLocked, for: Set(items.map(\.id)))
+        if items.count > 1 {
+            feedback(allLocked ? "已解锁 \(items.count) 项" : "已锁定 \(items.count) 项")
+        } else {
+            feedback(allLocked ? "已解锁" : "已锁定")
+        }
     }
 
     // MARK: - 几何
@@ -241,33 +269,80 @@ final class NotchController: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             var items: [StashItem] = []
+            var managedDuplicates: [StashItem] = []
             for provider in providers {
-                if let item = await self.stagedItem(for: provider) {
+                switch await self.stagedItem(for: provider) {
+                case .item(let item):
                     items.append(item)
+                case .duplicate(let existing):
+                    managedDuplicates.append(existing)
+                case nil:
+                    break
                 }
             }
-            guard !items.isEmpty else { return }
-            self.store.insert(items)
-            self.feedback("已暂存 \(items.count) 项")
-            if self.openedByDrag { self.scheduleAutoClose() }
+            let contentDuplicates = self.store.insert(items)
+            let duplicates = self.uniqueItems(managedDuplicates + contentDuplicates)
+            guard !items.isEmpty || !duplicates.isEmpty else { return }
+            let addedCount = items.count - contentDuplicates.count
+            if duplicates.isEmpty {
+                self.feedback("已暂存 \(addedCount) 项")
+                if self.openedByDrag { self.scheduleAutoClose() }
+            } else {
+                // 有重复时不自动收起：高亮已有项目，让用户看到。
+                self.selection = Set(duplicates.map(\.id))
+                self.feedback(self.duplicateFeedback(added: addedCount,
+                                                     duplicates: duplicates))
+            }
         }
     }
 
-    /// 单个 provider 按优先级归类：文件 > 图片 > 链接 > 文字。
-    private func stagedItem(for provider: NSItemProvider) async -> StashItem? {
+    /// 去重反馈文案：全部重复时强调"已高亮"，部分重复时报告两边数量。
+    private func duplicateFeedback(added: Int, duplicates: [StashItem]) -> String {
+        let existingText = duplicates.count == 1
+            ? "「\(duplicates[0].displayName)」已存在"
+            : "\(duplicates.count) 项已存在"
+        return added > 0 ? "已暂存 \(added) 项，\(existingText)" : "\(existingText)，高亮显示"
+    }
+
+    private enum StagedDrop {
+        case item(StashItem)
+        case duplicate(StashItem)
+    }
+
+    private struct TemporaryDropFile {
+        let url: URL
+        let directory: URL
+    }
+
+    /// 单个 provider 按优先级归类：文件 > 音频文件承诺 > 图片 > 链接 > 文字。
+    private func stagedItem(for provider: NSItemProvider) async -> StagedDrop? {
         let url = await loadURL(provider)
         if let url, url.isFileURL {
-            return try? store.stageFile(at: url)
+            if let existing = store.existingItem(forManagedURL: url) {
+                return .duplicate(existing)
+            }
+            return (try? store.stageFile(at: url)).map(StagedDrop.item)
+        }
+        if let audioFile = await loadAudioFileRepresentation(provider) {
+            defer { try? FileManager.default.removeItem(at: audioFile.directory) }
+            return (try? store.stageFile(at: audioFile.url)).map(StagedDrop.item)
+        }
+        if let audio = await loadAudioData(provider) {
+            return (try? store.stageAudioData(audio.data,
+                                              suggestedName: audio.name,
+                                              fileExtension: audio.ext)).map(StagedDrop.item)
         }
         if let image = await loadImage(provider) {
-            return try? store.stageImageData(image.data, suggestedName: "拖入图片", fileExtension: image.ext)
+            return (try? store.stageImageData(image.data,
+                                              suggestedName: "拖入图片",
+                                              fileExtension: image.ext)).map(StagedDrop.item)
         }
         if let url {
-            return StashItem.makeLink(urlString: url.absoluteString, title: nil)
+            return .item(StashItem.makeLink(urlString: url.absoluteString, title: nil))
         }
         if let text = await loadText(provider),
            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return StashItem.makeText(text)
+            return .item(StashItem.makeText(text))
         }
         return nil
     }
@@ -290,6 +365,73 @@ final class NotchController: ObservableObject {
         }
     }
 
+    /// 读取语音备忘录等来源提供的音频文件承诺。provider 回调返回的 URL 只在回调期间有效，
+    /// 因此先复制到自有临时目录，随后再交给 StashStore 入库。
+    private func loadAudioFileRepresentation(_ provider: NSItemProvider) async -> TemporaryDropFile? {
+        guard let type = preferredAudioType(for: provider) else { return nil }
+        let suggestedName = provider.suggestedName
+        let preferredExtension = type.preferredFilenameExtension ?? "m4a"
+        return await withCheckedContinuation { continuation in
+            provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { sourceURL, _ in
+                guard let sourceURL else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let directory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("ForNowDrop/\(UUID().uuidString)", isDirectory: true)
+                let name = Self.dropFileName(suggested: suggestedName,
+                                             fallback: sourceURL.lastPathComponent,
+                                             fileExtension: preferredExtension)
+                let destination = directory.appendingPathComponent(name)
+                do {
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try FileManager.default.copyItem(at: sourceURL, to: destination)
+                    continuation.resume(returning: TemporaryDropFile(url: destination, directory: directory))
+                } catch {
+                    try? FileManager.default.removeItem(at: directory)
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    /// 少数 provider 只暴露音频 data representation；作为文件承诺读取失败时的回退。
+    private func loadAudioData(_ provider: NSItemProvider) async -> (data: Data, name: String, ext: String)? {
+        guard let type = preferredAudioType(for: provider) else { return nil }
+        let ext = type.preferredFilenameExtension ?? "m4a"
+        let name = Self.dropFileName(suggested: provider.suggestedName,
+                                     fallback: "拖入录音",
+                                     fileExtension: ext)
+        let data: Data? = await withCheckedContinuation { continuation in
+            provider.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
+                continuation.resume(returning: data)
+            }
+        }
+        guard let data else { return nil }
+        return (data, name, ext)
+    }
+
+    private func preferredAudioType(for provider: NSItemProvider) -> UTType? {
+        let types = provider.registeredTypeIdentifiers
+            .compactMap(UTType.init)
+            .filter { $0.conforms(to: .audio) }
+        return types.first(where: { $0.preferredFilenameExtension != nil }) ?? types.first
+    }
+
+    private nonisolated static func dropFileName(suggested: String?,
+                                                  fallback: String,
+                                                  fileExtension: String) -> String {
+        let trimmed = suggested?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = trimmed.flatMap { $0.isEmpty ? nil : $0 } ?? fallback
+        var name = URL(fileURLWithPath: baseName).lastPathComponent
+            .replacingOccurrences(of: ":", with: "-")
+        let ext = fileExtension.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        if !ext.isEmpty, (name as NSString).pathExtension.isEmpty {
+            name += "." + ext
+        }
+        return name
+    }
+
     private func loadImage(_ provider: NSItemProvider) async -> (data: Data, ext: String)? {
         let imageTypes = provider.registeredTypeIdentifiers
             .compactMap { UTType($0) }
@@ -306,12 +448,23 @@ final class NotchController: ObservableObject {
         return (data, type.preferredFilenameExtension ?? "png")
     }
 
+    private func uniqueItems(_ candidates: [StashItem]) -> [StashItem] {
+        var seen: Set<UUID> = []
+        return candidates.filter { seen.insert($0.id).inserted }
+    }
+
     // MARK: - 粘贴入库
 
     private func handlePaste() {
         let content = PasteboardImporter.classify(NSPasteboardReader())
-        if PasteboardCommit.commit(content, to: store) {
-            feedback(pasteMessage(for: content))
+        let result = PasteboardCommit.commit(content, to: store)
+        if result.addedCount > 0 || !result.duplicates.isEmpty {
+            if result.duplicates.isEmpty {
+                feedback(pasteMessage(for: content))
+            } else {
+                selection = Set(result.duplicates.map(\.id))
+                feedback(duplicateFeedback(added: result.addedCount, duplicates: result.duplicates))
+            }
         } else {
             NSSound.beep()
         }
@@ -351,6 +504,25 @@ final class NotchController: ObservableObject {
             close()
         } else {
             draftModel.draft = ""
+        }
+    }
+
+    // MARK: - 录音
+
+    /// 点击 mic：开始录音；录音中再次点击停止并入库。
+    /// 停止入库后自动展开面板并高亮新录音，方便用户看到文件已就位。
+    func toggleRecording() {
+        if recorder.isRecording {
+            if let item = recorder.stopAndStash() {
+                feedback("已录制 · \(item.durationText ?? "")")
+                open()
+                selection = [item.id]
+                scrollToTopRequest += 1 // 列表若已滚动，把新录音滚回视野
+            } else {
+                NSSound.beep()
+            }
+        } else {
+            recorder.start()
         }
     }
 

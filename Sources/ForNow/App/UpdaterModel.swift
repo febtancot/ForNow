@@ -5,6 +5,9 @@ import Sparkle
 /// 并把"上次检查时间"桥接为 SwiftUI 可观察数据。
 @MainActor
 final class UpdaterModel: ObservableObject {
+    /// 官网更新日志锚点（供菜单/设置里的「查看更新日志」）。
+    static let changelogURL = URL(string: "https://fornow.liveby.app/#update")!
+
     let controller: SPUStandardUpdaterController
 
     @Published private(set) var lastCheckDate: Date?

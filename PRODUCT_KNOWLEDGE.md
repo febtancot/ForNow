@@ -29,31 +29,39 @@
 | 点击刘海开合面板 | ✅ | 整个刘海宽度（缺口下方热区）可点；Esc/点外收起 |
 | 拖近自动展开 | ✅ | 拖内容进入刘海热区自动展开，落下入库后自动收起 |
 | `⌘V` 粘贴入库 | ✅ | 优先级 文件>图片>链接>富文本>纯文本（`PasteboardImporter`，有单测）；输入条聚焦时由输入条原生处理 |
-| 快速录入 | ✅ | 面板底部输入条，打开面板即自动聚焦，直接打字，回车入库置顶并收起；纯文字建文字项、http(s) 地址自动建链接项；文字超长时输入条自动扩展为多行（上限 8 行后内部滚动）|
-| 四类内容 | ✅ | 文件/图片/文字/链接；图标、缩略图、尺寸、摘要、加入时间 |
-| 拖出 | ✅ | 每行 `.onDrag` 提供文件 URL / 文本 / 链接；默认保留原项 |
+| 快速录入 | ✅ | 面板底部输入条，**点击聚焦**后打字，回车入库置顶并收起；纯文字建文字项、http(s) 地址自动建链接项；文字超长时输入条自动扩展为多行（上限 8 行后内部滚动）|
+| 录音 | ✅ | 收起态分段胶囊左侧 mic 段点击开始、再点停止入库置顶（m4a、波形图标、时长+大小；录音中变红显示实时时长）；面板头部标题旁**常驻 mic** 同样可开始/停止；首次点击弹麦克风权限；**停止前快照时长，避免 `AVAudioRecorder.stop()` 后时长归零而误判为过短**；停止入库后面板自动展开、高亮并滚到新录音；双击/「打开」用默认播放器播放，支持复制/拖出/快速预览/在 Finder 显示 |
+| 五类内容 | ✅ | 文件/图片/文字/链接/录音；图标、缩略图、尺寸、摘要、加入日期时间 |
+| 文件去重 | ✅ | 两层防线：面板内已管理文件/目录/录音按受管 URL 直接识别，拖回面板不复制；文件/图片/音频按内容哈希（SHA-256）识别外部同内容副本。重复拖入/粘贴只保留一份，提示「已存在」并高亮原项目（有重复时面板不自动收起）；旧数据加载时补算哈希 |
+| 外部录音拖入 | ✅ | 拖放声明支持 `public.audio`；优先读取音频文件承诺并在 provider 回调有效期内复制，也支持 data representation 回退；适配语音备忘录等不直接提供 file URL 的来源 |
+| 拖出 | ✅ | 文件/图片/录音提供文件 URL；**文字同时提供 .txt 文件与纯文本**（拖入 Finder 得到 txt、拖入文本框得到文字）；链接提供 URL；默认保留原项 |
 | 单选/多选/全选 | ✅ | 单击选中、⌘-单击多选、⌘A 全选；蓝色高亮 |
 | 复制所选 | ✅ | 底部按钮或 `⌘C`；文件→文件URL、链接→URL、文字→字符串 |
-| 删除/清空 | ✅ | Delete 删所选、右键删除、底部"清空"二次确认 |
+| 删除/清空 | ✅ | Delete 删所选、右键删除、底部"清空"二次确认；锁定项被跳过 |
+| 锁定 | ✅ | 右键「锁定/解锁」（多选时批量）；锁定行显示锁图标，不受清空/删除影响；旧元数据无 `locked` 键自动按未锁定加载（手写解码兜底，有单测）|
 | 打开/预览 | ✅ | 双击打开文件/图片/链接；双击文字弹出原文预览窗；文件/图片右键快速预览（QLPreviewPanel）|
 | 列表图标 | ✅ | 文件/文件夹用真实 Finder 图标；图片缩略图；文字/链接用符号 |
 | 本地持久化 | ✅ | 文件复制进 `~/Library/Application Support/ForNow/Files/<uuid>/原名`，元数据 JSON；重启仍在 |
 | 重名处理 | ✅ | 内部用 uuid 子目录保证唯一，界面显示原名 |
 | 菜单栏备用入口 | ✅ | 状态栏图标（SF Symbol `tray.and.arrow.down.fill`，13pt，模板自适应）|
-| 设置 | ✅ | 登录启动、全屏启用、声音、动画；全局快捷键录制 |
+| 设置 | ✅ | 登录启动、全屏启用、声音、动画；全局快捷键录制；打开即置前（激活 App，不被其他窗口遮挡）|
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
 | 无刘海/外接屏回退 | ✅ | `NotchMetrics` 检测刘海，缺失时顶部中央热区（有单测）|
-| 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查 |
+| 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查；菜单栏与设置「更新」页有「查看更新日志」（直达官网 `#update` 锚点）|
 
 ## 交互模型（关键细节）
 
 - **刘海命中区**：刘海缺口本身无可点击像素，真正命中的是缺口正下方一条覆盖刘海宽度、下延 ~18pt 的热区；透明命中层用 `Color.white.opacity(0.001)`（`Color.clear` 只响应悬停、不响应点击）。
 - **首次点击**：面板用 `NotchHostingView` 重写 `acceptsFirstMouse` 返回 true，应用未激活时首击也生效。
-- **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、**文字弹出原文预览窗**（可滚动、可选中复制）。
+- **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接/录音打开（录音用默认播放器）、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
-- **快速录入（输入条，面板底部）**：面板打开自动聚焦、可直接打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行输入区（上限 8 行，超出后**定高滚动、显示滚动条**）。**状态隔离与高度测量**：草稿/聚焦状态在独立 `DraftModel`（仅输入条观察），打字/粘贴只重绘输入条；高度测量用 `DraftTextMetrics`（TextKit 惰性排版、只排前 8 行，成本与行长成正比、与全文长度无关，另对超长文本截断测量前缀），窗口高度由合并去抖的 `draftDidChange` 事件驱动 `NotchWindow.contentHeight` 直接调整，粘贴大段文字不卡顿、无逐帧动画重排。
+- **锁定**：右键行 →「锁定」（多选时批量，已全锁则显示「解锁」）；锁定行尾显示锁图标、悬停删除按钮隐藏；「清空」与 Delete/右键删除都跳过锁定项（提示保留数量），需先解锁才能删除。
+- **录音（分段胶囊 mic 段 + 面板头部常驻 mic）**：收起态胶囊条左侧 mic 段点击开始（首次弹麦克风权限）、再点停止入库，录音中变红并显示实时时长；右侧托盘段（及窗口其余区域）点击打开面板；展开面板头部标题旁同样常驻 mic（空闲 mic 图标、录音中红色「录音中 m:ss」），两态都能开始/停止；不足 0.5 秒视为误触丢弃；音频存 m4a（`AVAudioRecorder`，AAC 44.1kHz 单声道），文件名「录音-时间戳.m4a」、列表显示「录音 · 时刻」；**停止入库后面板自动展开、高亮新录音并把列表滚到顶部**（`scrollToTopRequest`）；音频行副标题显示时长（`durationText`）。实时计时由 `RecordingController.elapsedSeconds` 发布（0.5s 计时器随录音启停、cleanup 复位）；时长文案统一走 `StashItem.durationText(seconds:)`（m:ss 格式）。**胶囊条与头部 mic 按钮直接观察 `recorder`**（`@EnvironmentObject`），录音状态/计时变化只重绘这两处，不触发面板整体重渲染；收起窗口下沿热区高 26pt（`NotchMetrics.closedFrame(interactiveBelow:)`），胶囊完整落在菜单栏/刘海带下方不被遮挡。
+- **文件去重**：第一层按规范化后的受管 URL 识别面板自身拖出的文件、目录和录音，在复制前直接返回原项目（目录也可拦截）；第二层为文件/图片/音频计算 SHA-256（`ContentHasher`，流式读取不整载内存，存入 `StashItem.contentHash`），`StashStore.insert` 与已有（含同批）项目比对，内容相同则跳过入库并清理其暂存副本。拖入/粘贴提示「已存在」并高亮原项目，有重复时不自动收起面板。**旧数据兼容**：`load()` 时为无哈希的历史文件、图片和录音补算并写回元数据（一次性迁移）。
+- **日期显示**：每行副标题时间戳为「日期 + 时间」（如 8月16日 22:30）。
+- **快速录入（输入条，面板底部）**：面板打开**不**自动聚焦（保证 ⌘V 走传统粘贴入库），点击输入条才开始打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行输入区（上限 8 行，超出后**定高滚动、显示滚动条**）。**状态隔离与高度测量**：草稿/聚焦状态在独立 `DraftModel`（仅输入条观察），打字/粘贴只重绘输入条；高度测量用 `DraftTextMetrics`（TextKit 惰性排版、只排前 8 行，成本与行长成正比、与全文长度无关，另对超长文本截断测量前缀），窗口高度由合并去抖的 `draftDidChange` 事件驱动 `NotchWindow.contentHeight` 直接调整，粘贴大段文字不卡顿、无逐帧动画重排。
 - **设置窗口入口**：状态栏菜单「设置…」→ `StatusItemController` 回调 → `AppDelegate.onOpenSettings` → SwiftUI `openSettings` 动作（由 `ForNowApp` 场景内容经 `onChange(of: settingsVersion, initial: true)` 注入；`settingsVersion` 由 `settings.objectWillChange` 驱动递增，保证 body 至少评估一次）。AppKit 的 `showSettingsWindow:` 在新版 SDK 已移除、不可用。
 
 ## 技术架构
@@ -61,8 +69,8 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：47 个单测，无需 app host。
-- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
+- `ForNowKitTests`：64 个单测，无需 app host。
+- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈/录音切换）、`RecordingController`（AVAudioRecorder 录音状态机）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
 
@@ -78,7 +86,7 @@
 
 ## 当前状态与验证
 
-- 构建绿、47 单测绿、`.app` 正常启动为菜单栏程序、无崩溃/错误日志。
+- 构建绿、64 单测绿；本轮修复覆盖受管目录/录音拖回、外部同内容音频及旧录音哈希迁移。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -121,3 +129,15 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-14 · 长文本提交复位修复**：长文本提交后重开面板，输入条高度停在多行上限（铅笔图标悬空未归位）——根因是节流把"清空草稿→单行"的最终测量吞掉，且事件先于测量发出。修复：清空后测量不受节流限制、事件改在测量之后发送（订阅方读到的总是最新高度）、窗口高度 sink 加 `isOpen` 守卫（收起后不再被驱动）。新增 2 例回归测试，47 单测绿。
 - **2026-08-14 · v0.2.0 发布**：版本升至 0.2.0（`MARKETING_VERSION`，build 2）；打包签名 + 公证 + 装订的 `dist/ForNow-0.2.0.dmg`（`spctl`: Notarized Developer ID），供分发。
 - **2026-08-14 · v0.3.0 自动更新**：Sparkle 2.9.5 经 SPM 接入（启动 + 每日一次自动检查，菜单栏「检查更新…」，设置「更新」页）；更新源托管于产品站同域 Cloudflare Pages（`fornow.liveby.app/updates/appcast.xml`，`_headers` 对 appcast 短缓存 5 分钟）；EdDSA 私钥入 Keychain 并离线备份；`make_dmg.sh` 改 `codesign --deep`（Sparkle 嵌套二进制重签，公证要求）；新增 `Scripts/make_release.sh`（构建公证 → generate_appcast 签名 → wrangler 部署 → 落回站点源码）。踩坑：Sparkle 拒绝 `file://` feed（错误 2001）；wrangler 从 git 仓库运行会把当前分支当预览部署，生产部署须从非 git 临时目录 `--branch main`。47 单测绿；公证 Accepted；生产 feed 实测通过。
+- **2026-08-14 · v0.3.1 更新日志入口**：官网 changelog 区锚点改 `#update`（应用内「查看更新日志」承接目标）；菜单栏与设置「更新」页新增「查看更新日志…」（`NSWorkspace.shared.open` / SwiftUI `Link`，URL 常量在 `UpdaterModel.changelogURL`）。发布 0.3.1（build 4）。
+- **2026-08-16 · 修复 ⌘V 粘贴入库失效**：快速录入上线后面板打开即自动聚焦输入条，⌘V 被输入条吞掉，传统的「打开面板 → ⌘V 直接入库」失效。修复：去掉 `QuickEntryField` 的 `onAppear` 自动聚焦，面板打开不再处于编辑状态（⌘V/⌘C/⌘A/Delete/Esc 全走列表快捷键）；点击输入条才开始打字，聚焦状态仍由 `.onChange(of: focused)` 同步 `DraftModel.isTyping`；空态提示改「点击输入条打字录入，或拖入文件、按 ⌘V 粘贴」。47 单测绿。
+- **2026-08-16 · v0.3.2 发布**：版本升至 0.3.2（build 5）发布 ⌘V 修复；站点 changelog 加 v0.3.2 卡片（`c-tag--fix`），发布说明 `updates/ForNow-0.3.2.md` 随 appcast 嵌入。本机经 Sparkle 更新验证。
+- **2026-08-16 · 锁定**：`StashItem` 新增 `locked` 字段（手写解码兜底旧元数据，缺失键按未锁定加载）；`StashStore.removeAll`/`remove(ids:)` 跳过锁定项（返回实际删除数）、新增 `setLocked`；右键「锁定/解锁」批量切换、锁定行显示锁图标并隐藏悬停删除；「清空」对话框提示锁定保留数；删除反馈区分锁定项。新增 4 例测试（清空保留锁定项及文件、删除跳过、持久化、旧元数据兼容），51 单测绿。
+- **2026-08-16 · 文字拖出 .txt**：文字项拖出原只提供纯文本，拖入 Finder 得到二进制 textClipping；现同时提供 .txt 文件（临时目录 `ForNowDrag/<id>/`，`StashItem.txtFileName` 清洗摘要为文件名）与纯文本两种表示。新增 1 例测试，52 单测绿。
+- **2026-08-16 · 暂存项显示日期**：行副标题时间戳从仅时间改为「日期 + 时间」（`.abbreviated` + `.shortened`）。
+- **2026-08-16 · 设置窗口置前**：LSUIElement 菜单栏程序点状态栏菜单不激活 App，设置窗口被其他窗口遮挡；`AppDelegate.openSettingsWindow` 打开设置后 `NSApp.activate(ignoringOtherApps:)` 并把关键窗口 orderFront。
+- **2026-08-16 · 录音**：新增 `StashItemKind.audio` 与 `StashItem.makeAudio`/`durationText`/`durationSeconds`（手写解码兜底）；`StashStore.addAudio`（m4a 入库）；`RecordingController`（AVAudioRecorder，AAC 44.1kHz 单声道，`AVAudioApplication` 权限请求，不足 0.5s 丢弃）；notch 左侧 mic 胶囊（`MicButton`，录音中变红）+ 面板头部「录音中」停止按钮；音频行波形图标、时长副标题、可打开/复制/拖出/快速预览/在 Finder 显示；Info.plist 加 `NSMicrophoneUsageDescription`。新增 3 例测试（入库+时长、持久化、文案），55 单测绿。
+- **2026-08-16 · 文件去重 + 录音自动展示**：`StashItem` 新增 `contentHash`（SHA-256，手写解码兜底旧元数据）；新增 `ContentHasher` 流式哈希（1MB 分块，不整载大文件）；`StashStore.insert` 对文件/图片按哈希去重（含同批内），跳过项清理暂存副本、返回已有项目；`addFiles` 改三元组、`addImageData` 返回 `(item?, duplicates)`；拖入/粘贴遇重复提示「已存在，高亮显示」并选中原项目（有重复时不自动收起面板）；录音停止入库后面板自动展开并高亮新录音。新增 3 例去重测试（二次添加跳过、同名同大小不同内容不误判、同批去重清理孤儿副本），58 单测绿。
+- **2026-08-16 · 录音入口重构**：解决「面板打开时无法开始录音」——收起态 mic 与中央 pill 合并为**分段胶囊**（左 mic 段、右托盘段均为独立按钮，VoiceOver 可分别触达；窗口其余区域点击仍打开面板）；录音中 mic 段变红并显示实时时长；展开面板头部标题旁**常驻 mic**（空闲 mic 图标、录音中红色「录音中 m:ss」）；`RecordingController` 新增 `elapsedSeconds`（0.5s 计时器随录音启停、cleanup 复位）；`StashItem` 新增静态 `durationText(seconds:)`（入库时长与实时计时共用 m:ss 格式）。新增 1 例测试，59 单测绿。
+- **2026-08-16 · 真机反馈五连修**：① mic 遮挡——收起窗口下沿热区 18→26pt（`NotchMetrics.closedFrame`），胶囊完整落在菜单栏/刘海带下方；② 计时跳动/按钮样式不更新——根因是视图读 `controller.recorder.*` 但只观察 `controller`，录音器发布不触发重绘；胶囊条与头部 mic 改直接观察 `recorder`（`@EnvironmentObject`），只重绘这两处；③ 录音文件不出现——入库后除展开面板+高亮外，新增 `scrollToTopRequest` 把列表滚到顶部（`ScrollViewReader`）；④ 面板内拖回旧文件仍重复入库——`StashStore.load()` 为无哈希历史项目补算并写回（一次性迁移），旧文件同样参与去重。新增 1 例补算测试，60 单测绿。
+- **2026-08-17 · 拖回去重与录音入库修复**：受管 URL 在复制前识别，目录/文件/录音从面板拖回不再新增；音频纳入 SHA-256 去重与旧数据补算；拖放新增 `public.audio`、音频文件承诺及 data representation 回退。录音停止改为先快照 `currentTime` 再 `stop()`，避免真机时长归零导致录音被当作过短丢弃。64 单测绿；麦克风与语音备忘录拖放仍需真机交互复验。
