@@ -4,24 +4,38 @@ import Combine
 /// 暂存内容的内存 + 持久化仓库。数组顺序即界面顺序（index 0 在最上方）。
 ///
 /// - 新加入的一批项目整体插入到顶部，且保持批内原有顺序。
-/// - 所有变更立即写盘（元数据）并同步真实文件的复制/删除。
+/// - 所有变更立即写盘；移入回收站时保留真实文件，满 30 天后才永久删除。
 @MainActor
 public final class StashStore: ObservableObject {
     @Published public private(set) var items: [StashItem] = []
+    @Published public private(set) var trashItems: [TrashedItem] = []
 
     private let metadataStore: StashMetadataStoring
+    private let trashMetadataStore: TrashMetadataStoring
+    private let now: () -> Date
+    private let trashRetentionInterval: TimeInterval
     public let fileStorage: StashFileStoring
 
-    public init(metadataStore: StashMetadataStoring, fileStorage: StashFileStoring) {
+    public init(metadataStore: StashMetadataStoring,
+                trashMetadataStore: TrashMetadataStoring,
+                fileStorage: StashFileStoring,
+                trashRetentionDays: Int = 30,
+                now: @escaping () -> Date = Date.init) {
         self.metadataStore = metadataStore
+        self.trashMetadataStore = trashMetadataStore
         self.fileStorage = fileStorage
+        self.trashRetentionInterval = TimeInterval(max(1, trashRetentionDays)) * 24 * 60 * 60
+        self.now = now
     }
 
     /// 默认实现：Application Support/ForNow 下的 JSON + Files 目录。
     public static func makeDefault() -> StashStore {
         let metadata = JSONMetadataStore(fileURL: AppPaths.metadataURL())
+        let trashMetadata = JSONTrashMetadataStore(fileURL: AppPaths.trashMetadataURL())
         let files = DiskFileStorage(rootDirectory: AppPaths.filesDirectory())
-        let store = StashStore(metadataStore: metadata, fileStorage: files)
+        let store = StashStore(metadataStore: metadata,
+                               trashMetadataStore: trashMetadata,
+                               fileStorage: files)
         store.load()
         return store
     }
@@ -30,6 +44,15 @@ public final class StashStore: ObservableObject {
 
     public func load() {
         items = (try? metadataStore.load()) ?? []
+        trashItems = ((try? trashMetadataStore.load()) ?? [])
+            .sorted { $0.trashedAt > $1.trashedAt }
+        // 两份元数据跨文件写入时若进程恰好中断，可能暂时同时出现同一 id。
+        // 活动列表优先，避免到期清理误删已恢复文件。
+        let activeIDs = Set(items.map(\.id))
+        let countBeforeReconciliation = trashItems.count
+        trashItems.removeAll { activeIDs.contains($0.id) }
+        if trashItems.count != countBeforeReconciliation { persistTrash() }
+        purgeExpiredTrash()
         backfillContentHashes()
     }
 
@@ -50,6 +73,20 @@ public final class StashStore: ObservableObject {
     }
 
     public var count: Int { items.count }
+
+    public var trashCount: Int { trashItems.count }
+
+    public var activeByteSize: Int64 { items.reduce(0) { $0 + ($1.byteSize ?? 0) } }
+
+    public var trashByteSize: Int64 { trashItems.reduce(0) { $0 + ($1.item.byteSize ?? 0) } }
+
+    public var activeByteSizeText: String {
+        ByteCountFormatter.string(fromByteCount: activeByteSize, countStyle: .file)
+    }
+
+    public var trashByteSizeText: String {
+        ByteCountFormatter.string(fromByteCount: trashByteSize, countStyle: .file)
+    }
 
     public var totalByteSize: Int64 { fileStorage.totalByteSize() }
 
@@ -201,22 +238,21 @@ public final class StashStore: ObservableObject {
         return duplicates
     }
 
-    // MARK: - 删除（锁定项被跳过，需先解锁）
+    // MARK: - 回收站（锁定项被跳过，需先解锁）
 
-    /// 删除指定项目（锁定项跳过），返回实际删除的数量。
+    /// 将指定项目移入应用内回收站（锁定项跳过），返回实际移动的数量。
     @discardableResult
     public func remove(ids: Set<UUID>) -> Int {
         guard !ids.isEmpty else { return 0 }
-        var removed = 0
-        for item in items where ids.contains(item.id) && !item.locked {
-            if let relativePath = item.relativePath {
-                try? fileStorage.remove(relativePath: relativePath)
-            }
-            removed += 1
-        }
+        let removedItems = items.filter { ids.contains($0.id) && !$0.locked }
+        guard !removedItems.isEmpty else { return 0 }
+        let trashedAt = now()
+        trashItems.insert(contentsOf: removedItems.map { TrashedItem(item: $0, trashedAt: trashedAt) }, at: 0)
         items.removeAll { ids.contains($0.id) && !$0.locked }
+        // 先写回收站再写活动列表；中途退出最多让项目暂时出现两处，load() 会安全归并。
+        persistTrash()
         persist()
-        return removed
+        return removedItems.count
     }
 
     @discardableResult
@@ -224,15 +260,75 @@ public final class StashStore: ObservableObject {
         remove(ids: [item.id])
     }
 
-    /// 清空所有未锁定项目；锁定项及其文件保留。
+    /// 将所有未锁定项目移入回收站；锁定项保留在暂存区。
     public func removeAll() {
-        for item in items where !item.locked {
-            if let relativePath = item.relativePath {
+        let removedItems = items.filter { !$0.locked }
+        guard !removedItems.isEmpty else { return }
+        let trashedAt = now()
+        trashItems.insert(contentsOf: removedItems.map { TrashedItem(item: $0, trashedAt: trashedAt) }, at: 0)
+        items.removeAll { !$0.locked }
+        persistTrash()
+        persist()
+    }
+
+    /// 从回收站恢复到暂存区顶部。若同内容文件已存在或底层文件丢失，该项目保持在回收站。
+    @discardableResult
+    public func restoreFromTrash(ids: Set<UUID>) -> TrashRestoreResult {
+        purgeExpiredTrash()
+        guard !ids.isEmpty else {
+            return TrashRestoreResult(restored: [], duplicates: [], missingFiles: [])
+        }
+
+        var hashes = Set(items.compactMap(\.contentHash))
+        var restored: [StashItem] = []
+        var duplicates: [StashItem] = []
+        var missingFiles: [StashItem] = []
+
+        for entry in trashItems where ids.contains(entry.id) {
+            let item = entry.item
+            if let relativePath = item.relativePath,
+               !FileManager.default.fileExists(atPath: fileStorage.absoluteURL(for: relativePath).path) {
+                missingFiles.append(item)
+                continue
+            }
+            if item.isContentDeduplicatedFile,
+               let hash = item.contentHash,
+               hashes.contains(hash) {
+                duplicates.append(item)
+                continue
+            }
+            restored.append(item)
+            if let hash = item.contentHash { hashes.insert(hash) }
+        }
+
+        if !restored.isEmpty {
+            let restoredIDs = Set(restored.map(\.id))
+            trashItems.removeAll { restoredIDs.contains($0.id) }
+            items.insert(contentsOf: restored, at: 0)
+            // 恢复时先写活动列表；中途退出由 load() 以活动列表为准归并。
+            persist()
+            persistTrash()
+        }
+        return TrashRestoreResult(restored: restored,
+                                  duplicates: duplicates,
+                                  missingFiles: missingFiles)
+    }
+
+    /// 永久清理已在回收站保留满 30 天的项目及其受管文件。
+    @discardableResult
+    public func purgeExpiredTrash(referenceDate: Date? = nil) -> Int {
+        let cutoff = (referenceDate ?? now()).addingTimeInterval(-trashRetentionInterval)
+        let expired = trashItems.filter { $0.trashedAt <= cutoff }
+        guard !expired.isEmpty else { return 0 }
+        for entry in expired {
+            if let relativePath = entry.item.relativePath {
                 try? fileStorage.remove(relativePath: relativePath)
             }
         }
-        items.removeAll { !$0.locked }
-        persist()
+        let expiredIDs = Set(expired.map(\.id))
+        trashItems.removeAll { expiredIDs.contains($0.id) }
+        persistTrash()
+        return expired.count
     }
 
     // MARK: - 锁定
@@ -252,6 +348,10 @@ public final class StashStore: ObservableObject {
         try? metadataStore.save(items)
     }
 
+    private func persistTrash() {
+        try? trashMetadataStore.save(trashItems)
+    }
+
     private func canonicalFileURL(_ url: URL) -> URL {
         url.standardizedFileURL.resolvingSymlinksInPath()
     }
@@ -262,7 +362,7 @@ public final class StashStore: ObservableObject {
     }
 }
 
-private extension StashItem {
+extension StashItem {
     var isContentDeduplicatedFile: Bool {
         kind == .file || kind == .image || kind == .audio
     }

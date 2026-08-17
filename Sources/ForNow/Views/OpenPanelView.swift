@@ -16,8 +16,10 @@ struct OpenPanelView: View {
             content
             Divider().opacity(0.3)
             footer
-            Divider().opacity(0.3)
-            QuickEntryField()
+            if !controller.isShowingTrash {
+                Divider().opacity(0.3)
+                QuickEntryField()
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(PanelBackground(isDropTargeted: controller.isDropTargeted))
@@ -38,15 +40,30 @@ struct OpenPanelView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Text("搁这儿").font(.headline)
-            micButton
+            Text(controller.isShowingTrash ? "回收站" : "搁这儿").font(.headline)
+            if !controller.isShowingTrash {
+                micButton
+            }
             Spacer()
-            if !store.items.isEmpty {
+            if !controller.isShowingTrash, !store.items.isEmpty {
                 Button(allSelected ? "取消全选" : "全选") { toggleSelectAll() }
                     .buttonStyle(.plain)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Button { controller.showTrash(!controller.isShowingTrash) } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: controller.isShowingTrash ? "tray" : "trash")
+                    if !controller.isShowingTrash, store.trashCount > 0 {
+                        Text("\(store.trashCount)")
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(controller.isShowingTrash ? "返回暂存" : "查看回收站")
+            .accessibilityLabel(controller.isShowingTrash ? "返回暂存" : "回收站，\(store.trashCount) 项")
             Button { controller.close() } label: {
                 Image(systemName: "chevron.up")
             }
@@ -90,7 +107,9 @@ struct OpenPanelView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if store.items.isEmpty {
+        if controller.isShowingTrash {
+            trashContent
+        } else if store.items.isEmpty {
             EmptyStateView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -113,34 +132,67 @@ struct OpenPanelView: View {
         }
     }
 
-    @ViewBuilder private var footer: some View {
-        HStack(spacing: 12) {
-            if controller.selection.isEmpty {
-                Text("\(store.count) 个项目 · \(store.totalByteSizeText)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                clearAllButton
-            } else {
-                Text("已选 \(controller.selection.count) 项")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button { controller.copySelection() } label: {
-                    Label("复制", systemImage: "doc.on.doc")
+    @ViewBuilder private var trashContent: some View {
+        if store.trashItems.isEmpty {
+            TrashEmptyStateView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(store.trashItems) { entry in
+                        TrashItemRow(entry: entry)
+                    }
                 }
-                .buttonStyle(.plain)
-                .help("复制所选（⌘C）")
-                Button(role: .destructive) { controller.deleteSelection() } label: {
-                    Label("删除", systemImage: "trash")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("删除所选")
+                .padding(10)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder private var footer: some View {
+        if controller.isShowingTrash {
+            HStack(spacing: 12) {
+                Text("\(store.trashCount) 项 · \(store.trashByteSizeText) · 保留 30 天")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if !store.trashItems.isEmpty {
+                    Button { controller.restoreAllFromTrash() } label: {
+                        Label("全部恢复", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        } else {
+            HStack(spacing: 12) {
+                if controller.selection.isEmpty {
+                    Text("\(store.count) 个项目 · \(store.activeByteSizeText)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    clearAllButton
+                } else {
+                    Text("已选 \(controller.selection.count) 项")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button { controller.copySelection() } label: {
+                        Label("复制", systemImage: "doc.on.doc")
+                    }
+                    .buttonStyle(.plain)
+                    .help("复制所选（⌘C）")
+                    Button(role: .destructive) { controller.deleteSelection() } label: {
+                        Label("移到回收站", systemImage: "trash")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("将所选移到回收站")
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        }
     }
 
     private var clearAllButton: some View {
@@ -150,8 +202,8 @@ struct OpenPanelView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .disabled(store.items.isEmpty)
-        .confirmationDialog("清空全部暂存项目？", isPresented: $confirmingClear, titleVisibility: .visible) {
-            Button("清空全部", role: .destructive) { controller.clearAll() }
+        .confirmationDialog("将全部暂存项目移到回收站？", isPresented: $confirmingClear, titleVisibility: .visible) {
+            Button("移到回收站", role: .destructive) { controller.clearAll() }
             Button("取消", role: .cancel) {}
         } message: {
             Text(clearAllMessage)
@@ -160,8 +212,9 @@ struct OpenPanelView: View {
 
     private var clearAllMessage: String {
         let lockedCount = store.items.filter(\.locked).count
-        let base = "此操作不可撤销，将删除全部 \(store.count) 个项目及其文件。"
-        return lockedCount > 0 ? base + "（\(lockedCount) 项已锁定将保留）" : base
+        let unlockedCount = store.count - lockedCount
+        let base = "\(unlockedCount) 个未锁定项目将保留在回收站 30 天，期间可以恢复。"
+        return lockedCount > 0 ? base + "（\(lockedCount) 项已锁定，将继续保留在暂存中）" : base
     }
 }
 
@@ -236,6 +289,22 @@ struct EmptyStateView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+        }
+        .padding(24)
+    }
+}
+
+struct TrashEmptyStateView: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "trash")
+                .font(.system(size: 30))
+                .foregroundStyle(.secondary)
+            Text("回收站是空的")
+                .font(.headline)
+            Text("清除的项目会在这里保留 30 天")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(24)
     }

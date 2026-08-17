@@ -60,8 +60,8 @@ struct StashItemRow: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("删除")
-                .accessibilityLabel("删除 \(item.displayName)")
+                .help("移到回收站")
+                .accessibilityLabel("将 \(item.displayName) 移到回收站")
             }
         }
         .padding(.horizontal, 8)
@@ -147,7 +147,7 @@ struct StashItemRow: View {
         Button(role: .destructive) {
             controller.removeItems(targets)
         } label: {
-            Label(targets.count > 1 ? "删除 \(targets.count) 项" : "删除", systemImage: "trash")
+            Label(targets.count > 1 ? "移到回收站 \(targets.count) 项" : "移到回收站", systemImage: "trash")
         }
     }
 

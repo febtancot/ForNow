@@ -17,4 +17,8 @@ public enum AppPaths {
     public static func metadataURL(fileManager: FileManager = .default) -> URL {
         supportDirectory(fileManager: fileManager).appendingPathComponent("metadata.json")
     }
+
+    public static func trashMetadataURL(fileManager: FileManager = .default) -> URL {
+        supportDirectory(fileManager: fileManager).appendingPathComponent("trash.json")
+    }
 }

@@ -5,6 +5,7 @@ import XCTest
 final class StashStoreTests: XCTestCase {
     private var tempRoot: URL!
     private var metadataURL: URL!
+    private var trashMetadataURL: URL!
     private var filesDir: URL!
 
     override func setUpWithError() throws {
@@ -12,6 +13,7 @@ final class StashStoreTests: XCTestCase {
             .appendingPathComponent("ForNowTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
         metadataURL = tempRoot.appendingPathComponent("metadata.json")
+        trashMetadataURL = tempRoot.appendingPathComponent("trash.json")
         filesDir = tempRoot.appendingPathComponent("Files", isDirectory: true)
     }
 
@@ -19,9 +21,11 @@ final class StashStoreTests: XCTestCase {
         try? FileManager.default.removeItem(at: tempRoot)
     }
 
-    private func makeStore() -> StashStore {
+    private func makeStore(now: @escaping () -> Date = Date.init) -> StashStore {
         StashStore(metadataStore: JSONMetadataStore(fileURL: metadataURL),
-                   fileStorage: DiskFileStorage(rootDirectory: filesDir))
+                   trashMetadataStore: JSONTrashMetadataStore(fileURL: trashMetadataURL),
+                   fileStorage: DiskFileStorage(rootDirectory: filesDir),
+                   now: now)
     }
 
     // MARK: 文字 / 链接
@@ -241,7 +245,7 @@ final class StashStoreTests: XCTestCase {
 
     // MARK: 删除
 
-    func testRemoveDeletesItemAndUnderlyingFile() throws {
+    func testRemoveMovesItemToTrashAndKeepsUnderlyingFile() throws {
         let store = makeStore()
         let f = try makeSourceFile(named: "gone.txt", contents: "x")
         let item = try XCTUnwrap(store.addFiles(at: [f]).added.first)
@@ -249,10 +253,11 @@ final class StashStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
         store.remove(item)
         XCTAssertTrue(store.items.isEmpty)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(store.trashItems.map(\.item.id), [item.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
 
-    func testRemoveAllClearsItemsAndFiles() throws {
+    func testRemoveAllMovesItemsToTrashAndKeepsFilesForRecovery() throws {
         let store = makeStore()
         let f = try makeSourceFile(named: "z.txt", contents: "zzz")
         store.addFiles(at: [f])
@@ -260,7 +265,99 @@ final class StashStoreTests: XCTestCase {
         XCTAssertGreaterThan(store.totalByteSize, 0)
         store.removeAll()
         XCTAssertTrue(store.items.isEmpty)
-        XCTAssertEqual(store.totalByteSize, 0)
+        XCTAssertEqual(store.trashItems.count, 2)
+        XCTAssertGreaterThan(store.totalByteSize, 0)
+    }
+
+    func testTrashPersistsAndRestoresAcrossReload() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let store = makeStore(now: { now })
+        let file = try makeSourceFile(named: "recover.txt", contents: "recoverable")
+        let item = try XCTUnwrap(store.addFiles(at: [file]).added.first)
+        let managedURL = try XCTUnwrap(store.absoluteURL(for: item))
+        store.remove(item)
+
+        let reloaded = makeStore(now: { now })
+        reloaded.load()
+        XCTAssertTrue(reloaded.items.isEmpty)
+        XCTAssertEqual(reloaded.trashItems.map(\.id), [item.id])
+
+        let result = reloaded.restoreFromTrash(ids: [item.id])
+        XCTAssertEqual(result.restored.map(\.id), [item.id])
+        XCTAssertTrue(result.duplicates.isEmpty)
+        XCTAssertTrue(result.missingFiles.isEmpty)
+        XCTAssertEqual(reloaded.items.map(\.id), [item.id])
+        XCTAssertTrue(reloaded.trashItems.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: managedURL.path))
+
+        let restoredReload = makeStore(now: { now })
+        restoredReload.load()
+        XCTAssertEqual(restoredReload.items.map(\.id), [item.id])
+        XCTAssertTrue(restoredReload.trashItems.isEmpty)
+    }
+
+    func testLoadReconcilesItemPresentInBothActiveAndTrashMetadata() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let store = makeStore(now: { now })
+        let item = store.addText("recover from interrupted metadata write")
+        try JSONTrashMetadataStore(fileURL: trashMetadataURL)
+            .save([TrashedItem(item: item, trashedAt: now)])
+
+        let reloaded = makeStore(now: { now })
+        reloaded.load()
+
+        XCTAssertEqual(reloaded.items.map(\.id), [item.id])
+        XCTAssertTrue(reloaded.trashItems.isEmpty)
+        XCTAssertTrue(try JSONTrashMetadataStore(fileURL: trashMetadataURL).load().isEmpty)
+    }
+
+    func testTrashPurgesItemAndFileAfterThirtyDays() throws {
+        var currentDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let store = makeStore(now: { currentDate })
+        let file = try makeSourceFile(named: "expired.txt", contents: "old")
+        let item = try XCTUnwrap(store.addFiles(at: [file]).added.first)
+        let managedURL = try XCTUnwrap(store.absoluteURL(for: item))
+        store.remove(item)
+
+        currentDate.addTimeInterval(29 * 24 * 60 * 60)
+        XCTAssertEqual(store.purgeExpiredTrash(), 0)
+        XCTAssertEqual(store.trashCount, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: managedURL.path))
+
+        currentDate.addTimeInterval(24 * 60 * 60)
+        XCTAssertEqual(store.purgeExpiredTrash(), 1)
+        XCTAssertTrue(store.trashItems.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: managedURL.path))
+    }
+
+    func testRestoreKeepsDuplicateFileInTrash() throws {
+        let store = makeStore()
+        let source = try makeSourceFile(named: "same.txt", contents: "same")
+        let trashed = try XCTUnwrap(store.addFiles(at: [source]).added.first)
+        store.remove(trashed)
+        let replacement = store.addFiles(at: [source])
+        XCTAssertEqual(replacement.added.count, 1)
+
+        let result = store.restoreFromTrash(ids: [trashed.id])
+
+        XCTAssertTrue(result.restored.isEmpty)
+        XCTAssertEqual(result.duplicates.map(\.id), [trashed.id])
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.trashItems.map(\.id), [trashed.id])
+    }
+
+    func testRestoreKeepsMissingFileInTrash() throws {
+        let store = makeStore()
+        let source = try makeSourceFile(named: "missing.txt", contents: "missing")
+        let trashed = try XCTUnwrap(store.addFiles(at: [source]).added.first)
+        store.remove(trashed)
+        try store.fileStorage.remove(relativePath: try XCTUnwrap(trashed.relativePath))
+
+        let result = store.restoreFromTrash(ids: [trashed.id])
+
+        XCTAssertTrue(result.restored.isEmpty)
+        XCTAssertEqual(result.missingFiles.map(\.id), [trashed.id])
+        XCTAssertEqual(store.trashItems.map(\.id), [trashed.id])
     }
 
     // MARK: 锁定

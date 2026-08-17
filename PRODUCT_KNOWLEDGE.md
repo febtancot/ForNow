@@ -38,7 +38,8 @@
 | 拖出 | ✅ | 文件/图片/录音提供文件 URL；**文字同时提供 .txt 文件与纯文本**（拖入 Finder 得到 txt、拖入文本框得到文字）；链接提供 URL；默认保留原项 |
 | 单选/多选/全选 | ✅ | 单击选中、⌘-单击多选、⌘A 全选；蓝色高亮 |
 | 复制所选 | ✅ | 底部按钮或 `⌘C`；文件→文件URL、链接→URL、文字→字符串 |
-| 删除/清空 | ✅ | Delete 删所选、右键删除、底部"清空"二次确认；锁定项被跳过 |
+| 删除/清空 | ✅ | Delete、右键与底部「清空」均把未锁定项目移入应用内回收站；清空前二次确认，锁定项跳过 |
+| 回收站 | ✅ | 面板头部可切换回收站；显示过去 30 天清除的文件/图片/文字/链接/录音及清除时间，支持单项或全部恢复；到期自动永久删除；恢复时拦截重复内容和底层文件缺失 |
 | 锁定 | ✅ | 右键「锁定/解锁」（多选时批量）；锁定行显示锁图标，不受清空/删除影响；旧元数据无 `locked` 键自动按未锁定加载（手写解码兜底，有单测）|
 | 打开/预览 | ✅ | 双击打开文件/图片/链接；双击文字弹出原文预览窗；文件/图片右键快速预览（QLPreviewPanel）|
 | 列表图标 | ✅ | 文件/文件夹用真实 Finder 图标；图片缩略图；文字/链接用符号 |
@@ -59,6 +60,7 @@
 - **图标**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
 - **锁定**：右键行 →「锁定」（多选时批量，已全锁则显示「解锁」）；锁定行尾显示锁图标、悬停删除按钮隐藏；「清空」与 Delete/右键删除都跳过锁定项（提示保留数量），需先解锁才能删除。
+- **回收站**：Delete、行尾删除、右键「移到回收站」和底部「清空」只迁移元数据，不立即删除受管文件；回收站由独立 `trash.json` 保存 `TrashedItem(item, trashedAt)`，面板头部垃圾桶入口显示数量，列表显示类型与清除时间，支持行尾/右键单项恢复和底部「全部恢复」。项目保留满 30 天后，在启动加载或打开回收站时永久删除真实文件。恢复保持原 id、创建时间和文件路径并插到暂存顶部；若当前暂存已有相同内容或文件已经缺失，则保留在回收站并提示。跨 `metadata.json`/`trash.json` 写入采用数据安全顺序，启动时以活动列表为准归并同 id，避免中断写入导致恢复文件被到期清理。
 - **录音（分段胶囊 mic 段 + 面板头部常驻 mic）**：收起态胶囊条左侧 mic 段点击开始（首次弹麦克风权限）、再点停止入库，录音中变红并显示实时时长；右侧托盘段（及窗口其余区域）点击打开面板；展开面板头部标题旁同样常驻 mic（空闲 mic 图标、录音中红色「录音中 m:ss」），两态都能开始/停止；不足 0.5 秒视为误触丢弃；音频存 m4a（`AVAudioRecorder`，AAC 44.1kHz 单声道），文件名「录音-时间戳.m4a」、列表显示「录音 · 时刻」；**停止入库后面板自动展开、高亮新录音并把列表滚到顶部**（`scrollToTopRequest`）；音频行副标题显示时长（`durationText`）。实时计时由 `RecordingController.elapsedSeconds` 发布（0.5s 计时器随录音启停、cleanup 复位）；时长文案统一走 `StashItem.durationText(seconds:)`（m:ss 格式）。**胶囊条与头部 mic 按钮直接观察 `recorder`**（`@EnvironmentObject`），录音状态/计时变化只重绘这两处，不触发面板整体重渲染；收起窗口下沿热区高 26pt（`NotchMetrics.closedFrame(interactiveBelow:)`），胶囊完整落在菜单栏/刘海带下方不被遮挡。
 - **面板内播放**：`AudioPlaybackController` 用单个 `AVAudioPlayer` 管理活动项目，200ms 同步真实进度；同项切换播放/暂停，新项先停止旧项，自然结束/系统中断/解码失败会清理状态。活动音频行显示 `Slider` 与 `当前 / 总时长`，拖动直接写入 `currentTime`。音频的双击、行尾按钮和右键菜单统一走面板内播放器，`ItemActions.open` 不再为音频调用 `NSWorkspace`；收起面板不停止播放，删除/清空活动项目以及开始录音前会停止，录音进行中禁止播放以避免扬声器内容被重新录入。
 - **文件去重**：第一层按规范化后的受管 URL 识别面板自身拖出的文件、目录和录音，在复制前直接返回原项目（目录也可拦截）；第二层为文件/图片/音频计算 SHA-256（`ContentHasher`，流式读取不整载内存，存入 `StashItem.contentHash`），`StashStore.insert` 与已有（含同批）项目比对，内容相同则跳过入库并清理其暂存副本。拖入/粘贴提示「已存在」并高亮原项目，有重复时不自动收起面板。**旧数据兼容**：`load()` 时为无哈希的历史文件、图片和录音补算并写回元数据（一次性迁移）。
@@ -71,8 +73,8 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：69 个单测，无需 app host。
-- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈/录音与播放协调）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（仓库）、`DiskFileStorage`/`JSONMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
+- `ForNowKitTests`：74 个单测，无需 app host。
+- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈/录音与播放协调）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
 
@@ -88,7 +90,7 @@
 
 ## 当前状态与验证
 
-- 构建绿、69 单测绿；面板内播放器状态机覆盖播放/暂停/恢复、切换项目、拖动定位、播放失败与自然结束。
+- 构建绿、74 单测绿；回收站覆盖迁移但保留文件、跨重启恢复、30 天到期清理、重复/缺失文件冲突及中断写入归并。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -144,3 +146,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-16 · 真机反馈五连修**：① mic 遮挡——收起窗口下沿热区 18→26pt（`NotchMetrics.closedFrame`），胶囊完整落在菜单栏/刘海带下方；② 计时跳动/按钮样式不更新——根因是视图读 `controller.recorder.*` 但只观察 `controller`，录音器发布不触发重绘；胶囊条与头部 mic 改直接观察 `recorder`（`@EnvironmentObject`），只重绘这两处；③ 录音文件不出现——入库后除展开面板+高亮外，新增 `scrollToTopRequest` 把列表滚到顶部（`ScrollViewReader`）；④ 面板内拖回旧文件仍重复入库——`StashStore.load()` 为无哈希历史项目补算并写回（一次性迁移），旧文件同样参与去重。新增 1 例补算测试，60 单测绿。
 - **2026-08-17 · 拖回去重与录音入库修复**：受管 URL 在复制前识别，目录/文件/录音从面板拖回不再新增；音频纳入 SHA-256 去重与旧数据补算；拖放新增 `public.audio`、音频文件承诺及 data representation 回退。录音停止改为先快照 `currentTime` 再 `stop()`，避免真机时长归零导致录音被当作过短丢弃。64 单测绿；麦克风与语音备忘录拖放仍需真机交互复验。
 - **2026-08-17 · 面板内音频播放**：新增 `AudioPlaybackController`（单实例 `AVAudioPlayer`、播放/暂停/恢复、200ms 进度、拖动定位、自然结束与失败清理）；音频行增加常驻播放按钮，活动行显示进度条和当前/总时长，双击与右键统一内联播放，移除音频外部打开/快速预览路径。切换音频停止上一条，收起面板继续播放；删除/清空活动音频或开始录音前停止播放，录音中禁止播放。新增 5 项状态机测试，69 单测绿；实际扬声器输出、拖动手感和视觉布局需本机交互验收。
+- **2026-08-17 · 30 天应用内回收站**：删除、批量删除与清空改为把未锁定项目迁入独立持久化回收站，真实文件保留 30 天；面板头部新增回收站入口和数量，支持单项/全部恢复并显示清除时间。恢复保持原元数据和文件，重复内容或文件缺失时不移出回收站；启动/打开回收站清理到期项目并永久删除文件。两份元数据按安全顺序写入并在加载时归并同 id，避免中断写入误删。新增 5 项测试，74 单测绿；入口布局、滚动和恢复反馈仍需本机交互验收。

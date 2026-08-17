@@ -14,6 +14,8 @@ final class NotchController: ObservableObject {
     @Published var toast: String?
     /// 当前选中的项目 id（支持单选/多选/全选）。
     @Published var selection: Set<UUID> = []
+    /// 面板当前是否显示应用内回收站。
+    @Published var isShowingTrash = false
     /// 面板列表滚动到顶部的请求计数（如录音入库后展示新项目）。
     @Published var scrollToTopRequest = 0
 
@@ -92,6 +94,7 @@ final class NotchController: ObservableObject {
         draftModel.draft = ""
         draftModel.isTyping = false
         selection.removeAll()
+        isShowingTrash = false
         setFrame(closedFrame(), animate: settings.animations)
         window.orderFrontRegardless()
     }
@@ -117,6 +120,7 @@ final class NotchController: ObservableObject {
     }
 
     func selectAll() {
+        guard !isShowingTrash else { return }
         selection = Set(store.items.map(\.id))
     }
 
@@ -146,9 +150,9 @@ final class NotchController: ObservableObject {
         let removed = store.remove(ids: selection)
         selection.removeAll()
         if lockedCount > 0 {
-            feedback(removed > 0 ? "已删除 \(removed) 项，\(lockedCount) 项已锁定" : "所选已锁定，先解锁再删除")
+            feedback(removed > 0 ? "已移入回收站 \(removed) 项，\(lockedCount) 项已锁定" : "所选已锁定，先解锁再删除")
         } else {
-            feedback("已删除 \(removed) 项")
+            feedback("已移入回收站 \(removed) 项")
         }
     }
 
@@ -166,9 +170,9 @@ final class NotchController: ObservableObject {
         let removed = store.remove(ids: ids)
         selection.subtract(ids)
         if lockedCount > 0 {
-            feedback(removed > 0 ? "已删除 \(removed) 项，\(lockedCount) 项已锁定" : "已锁定，先解锁再删除")
+            feedback(removed > 0 ? "已移入回收站 \(removed) 项，\(lockedCount) 项已锁定" : "已锁定，先解锁再删除")
         } else {
-            feedback(items.count > 1 ? "已删除 \(items.count) 项" : "已删除")
+            feedback(removed > 1 ? "已移入回收站 \(removed) 项" : "已移入回收站")
         }
     }
 
@@ -186,8 +190,42 @@ final class NotchController: ObservableObject {
 
     /// 清空全部未锁定项目；若正在播放的项目会被清空，先停止播放。
     func clearAll() {
+        let unlockedCount = store.items.filter { !$0.locked }.count
+        let lockedCount = store.items.count - unlockedCount
         stopPlaybackIfRemoving(store.items)
         store.removeAll()
+        if unlockedCount > 0 {
+            feedback(lockedCount > 0
+                     ? "已移入回收站 \(unlockedCount) 项，\(lockedCount) 项已锁定"
+                     : "已移入回收站 \(unlockedCount) 项")
+        }
+    }
+
+    func showTrash(_ show: Bool) {
+        selection.removeAll()
+        isShowingTrash = show
+        if show { store.purgeExpiredTrash() }
+    }
+
+    func restoreFromTrash(_ entry: TrashedItem) {
+        reportRestore(store.restoreFromTrash(ids: [entry.id]))
+    }
+
+    func restoreAllFromTrash() {
+        reportRestore(store.restoreFromTrash(ids: Set(store.trashItems.map(\.id))))
+    }
+
+    private func reportRestore(_ result: TrashRestoreResult) {
+        let restoredCount = result.restored.count
+        if restoredCount > 0, result.duplicates.isEmpty, result.missingFiles.isEmpty {
+            feedback(restoredCount == 1 ? "已恢复到暂存" : "已恢复 \(restoredCount) 项到暂存")
+        } else if restoredCount > 0 {
+            feedback("已恢复 \(restoredCount) 项，\(result.duplicates.count) 项重复，\(result.missingFiles.count) 项文件缺失")
+        } else if !result.duplicates.isEmpty {
+            feedback("暂存中已有相同文件，未恢复")
+        } else if !result.missingFiles.isEmpty {
+            feedback("原文件已缺失，无法恢复")
+        }
     }
 
     private func stopPlaybackIfRemoving(_ items: [StashItem]) {
