@@ -53,6 +53,7 @@ public final class StashStore: ObservableObject {
         trashItems.removeAll { activeIDs.contains($0.id) }
         if trashItems.count != countBeforeReconciliation { persistTrash() }
         purgeExpiredTrash()
+        if pinLockedItemsToTop() { persist() }
         backfillContentHashes()
     }
 
@@ -234,6 +235,7 @@ public final class StashStore: ObservableObject {
             toAdd.append(item)
         }
         items.insert(contentsOf: toAdd, at: 0)
+        pinLockedItemsToTop()
         persist()
         return duplicates
     }
@@ -305,6 +307,7 @@ public final class StashStore: ObservableObject {
             let restoredIDs = Set(restored.map(\.id))
             trashItems.removeAll { restoredIDs.contains($0.id) }
             items.insert(contentsOf: restored, at: 0)
+            pinLockedItemsToTop()
             // 恢复时先写活动列表；中途退出由 load() 以活动列表为准归并。
             persist()
             persistTrash()
@@ -339,6 +342,7 @@ public final class StashStore: ObservableObject {
         for index in items.indices where ids.contains(items[index].id) {
             items[index].locked = locked
         }
+        pinLockedItemsToTop()
         persist()
     }
 
@@ -359,6 +363,15 @@ public final class StashStore: ObservableObject {
     private func uniqueItems(_ candidates: [StashItem]) -> [StashItem] {
         var seen: Set<UUID> = []
         return candidates.filter { seen.insert($0.id).inserted }
+    }
+
+    /// 稳定分区：锁定项目永远位于列表顶部，两个分区内继续保持原有相对顺序。
+    @discardableResult
+    private func pinLockedItemsToTop() -> Bool {
+        let ordered = items.filter(\.locked) + items.filter { !$0.locked }
+        guard ordered.map(\.id) != items.map(\.id) else { return false }
+        items = ordered
+        return true
     }
 }
 

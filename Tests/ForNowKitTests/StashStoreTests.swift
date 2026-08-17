@@ -403,6 +403,43 @@ final class StashStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.items.first?.locked, true)
     }
 
+    func testLockedItemsStayAboveNewUnlockedItems() {
+        let store = makeStore()
+        let older = store.addText("older")
+        let locked = store.addText("locked")
+        store.setLocked(true, for: [locked.id])
+
+        let newest = store.addText("newest")
+
+        XCTAssertEqual(store.items.map(\.id), [locked.id, newest.id, older.id])
+        XCTAssertEqual(store.items.map(\.locked), [true, false, false])
+    }
+
+    func testLoadRepairsLegacyOrderWithLockedItemsBelowUnlockedItems() throws {
+        let locked = StashItem(kind: .text, displayName: "locked", locked: true, text: "locked")
+        let normal = StashItem.makeText("normal")
+        try JSONMetadataStore(fileURL: metadataURL).save([normal, locked])
+
+        let store = makeStore()
+        store.load()
+
+        XCTAssertEqual(store.items.map(\.id), [locked.id, normal.id])
+        XCTAssertEqual(try JSONMetadataStore(fileURL: metadataURL).load().map(\.id), [locked.id, normal.id])
+    }
+
+    func testRestoredItemAppearsBelowLockedItems() {
+        let store = makeStore()
+        let locked = store.addText("locked")
+        store.setLocked(true, for: [locked.id])
+        let recoverable = store.addText("recoverable")
+        store.remove(recoverable)
+
+        let result = store.restoreFromTrash(ids: [recoverable.id])
+
+        XCTAssertEqual(result.restored.map(\.id), [recoverable.id])
+        XCTAssertEqual(store.items.map(\.id), [locked.id, recoverable.id])
+    }
+
     // MARK: 录音
 
     func testAddAudioStoresFileWithDuration() throws {

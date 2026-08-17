@@ -45,12 +45,6 @@ struct OpenPanelView: View {
                 micButton
             }
             Spacer()
-            if !controller.isShowingTrash, !store.items.isEmpty {
-                Button(allSelected ? "取消全选" : "全选") { toggleSelectAll() }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             Button { controller.showTrash(!controller.isShowingTrash) } label: {
                 HStack(spacing: 4) {
                     Image(systemName: controller.isShowingTrash ? "tray" : "trash")
@@ -125,7 +119,7 @@ struct OpenPanelView: View {
                 // 程序化置顶请求（如录音入库后展示新项目）——列表滚动时把最新项滚回视野。
                 .onChange(of: controller.scrollToTopRequest) {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        proxy.scrollTo(store.items.first?.id, anchor: .top)
+                        proxy.scrollTo(controller.scrollTargetItemID ?? store.items.first?.id, anchor: .top)
                     }
                 }
             }
@@ -166,6 +160,13 @@ struct OpenPanelView: View {
             .padding(.vertical, 8)
         } else {
             HStack(spacing: 12) {
+                if !store.items.isEmpty {
+                    Button(allSelected ? "取消全选" : "全选") { toggleSelectAll() }
+                        .buttonStyle(.plain)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help(allSelected ? "取消全部选择" : "选择全部项目（⌘A）")
+                }
                 if controller.selection.isEmpty {
                     Text("\(store.count) 个项目 · \(store.activeByteSizeText)")
                         .font(.caption)

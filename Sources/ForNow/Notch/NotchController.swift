@@ -18,6 +18,8 @@ final class NotchController: ObservableObject {
     @Published var isShowingTrash = false
     /// 面板列表滚动到顶部的请求计数（如录音入库后展示新项目）。
     @Published var scrollToTopRequest = 0
+    /// 滚动请求的优先目标；锁定项目置顶时，新录音可能不再是列表第一项。
+    @Published var scrollTargetItemID: UUID?
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
@@ -40,7 +42,8 @@ final class NotchController: ObservableObject {
     /// 面板是否因拖入而展开（用于拖入落下后自动收起）。
     private var openedByDrag = false
 
-    private let openSize = CGSize(width: 384, height: 470)
+    /// 为刘海两侧的头部操作留出安全空间，避免回收站入口落入刘海遮挡区。
+    private let openSize = CGSize(width: 440, height: 470)
 
     init(store: StashStore, settings: AppSettings) {
         self.store = store
@@ -572,6 +575,7 @@ final class NotchController: ObservableObject {
                 feedback("已录制 · \(item.durationText ?? "")")
                 open()
                 selection = [item.id]
+                scrollTargetItemID = item.id
                 scrollToTopRequest += 1 // 列表若已滚动，把新录音滚回视野
             } else {
                 NSSound.beep()
