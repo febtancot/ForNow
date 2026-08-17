@@ -20,6 +20,8 @@ final class NotchController: ObservableObject {
     @Published var scrollToTopRequest = 0
     /// 滚动请求的优先目标；锁定项目置顶时，新录音可能不再是列表第一项。
     @Published var scrollTargetItemID: UUID?
+    /// 当前展开面板宽度；由左右边缘拖动实时更新。
+    @Published private(set) var panelWidth: CGFloat
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
@@ -41,14 +43,14 @@ final class NotchController: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     /// 面板是否因拖入而展开（用于拖入落下后自动收起）。
     private var openedByDrag = false
-
-    /// 为刘海两侧的头部操作留出安全空间，避免回收站入口落入刘海遮挡区。
-    private let openSize = CGSize(width: 440, height: 470)
+    private var resizeStartWidth: CGFloat?
 
     init(store: StashStore, settings: AppSettings) {
         self.store = store
         self.settings = settings
         self.window = NotchWindow()
+        self.panelWidth = CGFloat(settings.panelWidth)
+        self.panelWidth = clampedPanelWidth(self.panelWidth)
         window.contentHeight = Self.openHeight(fieldHeight: DraftTextMetrics.lineHeight)
 
         draftModel.onSubmit = { [weak self] in self?.submitDraft() }
@@ -89,6 +91,7 @@ final class NotchController: ObservableObject {
 
     func close() {
         guard isOpen else { return }
+        if resizeStartWidth != nil { endPanelResize() }
         isOpen = false
         isDropTargeted = false
         openedByDrag = false
@@ -255,7 +258,50 @@ final class NotchController: ObservableObject {
     }
 
     private func closedFrame() -> CGRect { metrics().closedFrame() }
-    private func openFrame() -> CGRect { metrics().openFrame(width: openSize.width, height: window.contentHeight) }
+    private func openFrame() -> CGRect { metrics().openFrame(width: panelWidth, height: window.contentHeight) }
+
+    // MARK: - 横向调整宽度
+
+    /// 面板以刘海为中心，因此边缘移动 1pt 对应总宽度变化 2pt。
+    func resizePanel(from edge: HorizontalEdge, translation: CGFloat) {
+        guard isOpen else { return }
+        if resizeStartWidth == nil { resizeStartWidth = panelWidth }
+        guard let startWidth = resizeStartWidth else { return }
+        let signedTranslation = edge == .trailing ? translation : -translation
+        applyPanelWidth(startWidth + signedTranslation * 2, persist: false)
+    }
+
+    func endPanelResize() {
+        guard resizeStartWidth != nil else { return }
+        resizeStartWidth = nil
+        settings.setPanelWidth(Double(panelWidth))
+    }
+
+    /// 辅助功能等非拖拽入口按固定步长调整并立即持久化。
+    func adjustPanelWidth(by delta: CGFloat) {
+        applyPanelWidth(panelWidth + delta, persist: true)
+    }
+
+    private func applyPanelWidth(_ proposedWidth: CGFloat, persist: Bool) {
+        let width = clampedPanelWidth(proposedWidth)
+        guard width != panelWidth else {
+            if persist { settings.setPanelWidth(Double(width)) }
+            return
+        }
+        panelWidth = width
+        if isOpen { setFrame(openFrame(), animate: false) }
+        if persist { settings.setPanelWidth(Double(width)) }
+    }
+
+    private func clampedPanelWidth(_ proposedWidth: CGFloat) -> CGFloat {
+        let currentMetrics = metrics()
+        let screenMaximum = max(0, currentMetrics.screenFrame.width - 40)
+        let maximum = min(CGFloat(AppSettings.maximumPanelWidth), screenMaximum)
+        let notchSafeMinimum = currentMetrics.hasNotch ? currentMetrics.notchWidth + 96 : 0
+        let desiredMinimum = max(CGFloat(AppSettings.minimumPanelWidth), notchSafeMinimum)
+        let minimum = min(desiredMinimum, maximum)
+        return min(max(proposedWidth, minimum), maximum)
+    }
 
     /// 面板打开时按输入条高度计算的内容高度。
     private func openHeight() -> CGFloat {

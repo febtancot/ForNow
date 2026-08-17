@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import ForNowKit
 
@@ -34,6 +35,12 @@ struct OpenPanelView: View {
                     .padding(.bottom, 42)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
+        }
+        .overlay(alignment: .leading) {
+            HorizontalPanelResizeHandle(edge: .leading)
+        }
+        .overlay(alignment: .trailing) {
+            HorizontalPanelResizeHandle(edge: .trailing)
         }
         .animation(.easeInOut(duration: 0.15), value: controller.toast)
     }
@@ -216,6 +223,54 @@ struct OpenPanelView: View {
         let unlockedCount = store.count - lockedCount
         let base = "\(unlockedCount) 个未锁定项目将保留在回收站 30 天，期间可以恢复。"
         return lockedCount > 0 ? base + "（\(lockedCount) 项已锁定，将继续保留在暂存中）" : base
+    }
+}
+
+/// 展开面板左右边缘的横向拖拽命中区；拖动时窗口始终保持顶部居中。
+private struct HorizontalPanelResizeHandle: View {
+    let edge: HorizontalEdge
+    @EnvironmentObject private var controller: NotchController
+    @State private var hovering = false
+
+    var body: some View {
+        ZStack {
+            Color.white.opacity(0.001)
+            Capsule()
+                .fill(Color.primary.opacity(hovering ? 0.28 : 0))
+                .frame(width: 2, height: 36)
+        }
+        .frame(width: 10)
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if inside, !hovering {
+                NSCursor.resizeLeftRight.push()
+            } else if !inside, hovering {
+                NSCursor.pop()
+            }
+            hovering = inside
+        }
+        .onDisappear {
+            if hovering { NSCursor.pop() }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                .onChanged { value in
+                    controller.resizePanel(from: edge, translation: value.translation.width)
+                }
+                .onEnded { _ in controller.endPanelResize() }
+        )
+        .help("拖动调整面板宽度")
+        .accessibilityElement()
+        .accessibilityLabel(edge == .leading ? "从左边缘调整面板宽度" : "从右边缘调整面板宽度")
+        .accessibilityValue("\(Int(controller.panelWidth)) 点")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: controller.adjustPanelWidth(by: 32)
+            case .decrement: controller.adjustPanelWidth(by: -32)
+            @unknown default: break
+            }
+        }
     }
 }
 

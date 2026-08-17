@@ -27,6 +27,7 @@
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
 | 点击刘海开合面板 | ✅ | 整个刘海宽度（缺口下方热区）可点；Esc/点外收起 |
+| 面板宽度 | ✅ | 默认恢复为 384pt；展开后可拖动左右完整边缘横向调整，保持顶部居中；宽度按屏幕/刘海安全范围限制并跨重启保存 |
 | 拖近自动展开 | ✅ | 拖内容进入刘海热区自动展开，落下入库后自动收起 |
 | `⌘V` 粘贴入库 | ✅ | 优先级 文件>图片>链接>富文本>纯文本（`PasteboardImporter`，有单测）；输入条聚焦时由输入条原生处理 |
 | 快速录入 | ✅ | 面板底部输入条，**点击聚焦**后打字，回车入库置顶并收起；纯文字建文字项、http(s) 地址自动建链接项；文字超长时输入条自动扩展为多行（上限 8 行后内部滚动）|
@@ -56,7 +57,7 @@
 
 - **刘海命中区**：刘海缺口本身无可点击像素，真正命中的是缺口正下方一条覆盖刘海宽度、下延 ~18pt 的热区；透明命中层用 `Color.white.opacity(0.001)`（`Color.clear` 只响应悬停、不响应点击）。
 - **首次点击**：面板用 `NotchHostingView` 重写 `acceptsFirstMouse` 返回 true，应用未激活时首击也生效。
-- **展开面板宽度**：展开宽度为 440pt（屏幕较窄时仍由 `NotchMetrics` 约束），让头部回收站与收起按钮落在刘海右侧安全区，避免被刘海遮挡。
+- **展开面板宽度**：默认 384pt。展开后左右边缘各有 10pt 透明拖拽命中区，悬停显示细线并切换横向缩放光标；面板始终以刘海为中心，边缘移动 1pt 对应总宽度变化 2pt。全局范围为 320–720pt，实际还会按当前屏幕宽度及 `刘海宽度 + 96pt` 安全下限动态限制。拖拽结束（或拖拽中收起）通过 `AppSettings.panelWidth` 写入 UserDefaults，重启继续使用；VoiceOver 可按 32pt 步长增减。
 - **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、录音在当前行播放/暂停、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标与悬停快捷操作**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。鼠标进入行后，音频图标叠加播放/暂停、文件夹图标叠加打开、普通文件和图片图标叠加快速预览；按钮直接覆盖在 34×34 图标命中区，不再占用行尾空间。音频活动期间按钮保持可见，便于随时暂停；VoiceOver 行操作仍提供等价的播放、打开或预览动作。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
@@ -75,8 +76,8 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：77 个单测，无需 app host。
-- 关键文件：`NotchController`（窗口/开合/拖入/粘贴/选择/反馈/录音与播放协调）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
+- `ForNowKitTests`：80 个单测，无需 app host。
+- 关键文件：`NotchController`（窗口/开合/宽度调整/拖入/粘贴/选择/反馈/录音与播放协调）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`AppSettings`（含持久化面板宽度）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
 
@@ -92,7 +93,7 @@
 
 ## 当前状态与验证
 
-- 构建绿、77 单测绿；新增覆盖锁定项目在新项目插入、历史顺序加载和回收站恢复后的稳定置顶。
+- 构建绿、80 单测绿；新增覆盖面板宽度默认值、持久化及全局范围限制。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -151,3 +152,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-17 · 30 天应用内回收站**：删除、批量删除与清空改为把未锁定项目迁入独立持久化回收站，真实文件保留 30 天；面板头部新增回收站入口和数量，支持单项/全部恢复并显示清除时间。恢复保持原元数据和文件，重复内容或文件缺失时不移出回收站；启动/打开回收站清理到期项目并永久删除文件。两份元数据按安全顺序写入并在加载时归并同 id，避免中断写入误删。新增 5 项测试，74 单测绿；入口布局、滚动和恢复反馈仍需本机交互验收。
 - **2026-08-17 · 图标悬停快捷操作**：音频播放/暂停从行尾迁到音频图标遮罩，文件夹图标悬停显示直接打开，普通文件和图片图标悬停显示快速预览；音频活动时按钮常显，避免移开鼠标后无法暂停。保留双击、右键与 VoiceOver 等价动作，不增加行宽占用。74 单测绿；悬停命中、遮罩对比度与拖拽手感需本机交互验收。
 - **2026-08-17 · 锁定置顶与刘海安全布局**：`StashStore` 新增稳定锁定分区，锁定/解锁、新增项目、回收站恢复和重启加载后锁定项都永远位于顶部；新录音滚动目标改为具体项目 id。展开面板由 384pt 加宽到 440pt，让右上回收站入口避开刘海；全选/取消全选迁到左下操作栏、快捷文本上方。新增 3 项排序测试，77 单测绿；实际刘海避让和底部操作密度需本机视觉验收。
+- **2026-08-17 · 可拖拽自定义面板宽度**：全选迁到底部后，默认展开宽度由 440pt 恢复为 384pt；左右完整边缘新增 10pt 拖拽区和缩放光标，窗口保持顶部居中对称伸缩。宽度受 320–720pt、屏幕边距及刘海安全下限共同约束，拖拽结束/中途收起时持久化到 `AppSettings.panelWidth`，并提供 VoiceOver 步进调整。新增 3 项设置测试，80 单测绿；边缘命中、连续缩放手感和不同屏幕切换需本机交互验收。
