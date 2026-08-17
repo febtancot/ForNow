@@ -88,6 +88,10 @@ NOTARY_PROFILE=ForNowNotary ./Scripts/make_release.sh
 #    （CDN 缓存最多 5 分钟刷新）
 ```
 
+如需修正 appcast 的全局元数据而不重新发布同名 DMG，运行
+`./Scripts/regenerate_appcast.sh`。脚本会从站点保留的版本化安装包重建 feed，
+并确保 Sparkle 的「查看版本历史记录」指向官网 `#update`。
+
 **三条铁律：**
 
 - **永不删除**站点 `updates/` 里的历史 DMG（增量更新 `.delta` 依赖它们）。

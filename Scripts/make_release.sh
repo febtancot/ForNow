@@ -84,6 +84,7 @@ echo "==> 生成 appcast（首次会弹 Keychain 授权框，请选“始终允�
 "$TOOLS_DIR/bin/generate_appcast" \
   --download-url-prefix "$SITE_URL/updates/" \
   --link "$SITE_URL/" \
+  --full-release-notes-url "$SITE_URL/#update" \
   "$STAGE/updates"
 
 # ── 6. 更新首页的下载链接与版本文案（机械替换两个模式）────────────────────
