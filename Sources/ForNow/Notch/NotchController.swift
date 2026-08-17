@@ -43,6 +43,7 @@ final class NotchController: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     /// 面板是否因拖入而展开（用于拖入落下后自动收起）。
     private var openedByDrag = false
+    private var resizeEdge: HorizontalEdge?
     private var resizeStartWidth: CGFloat?
     private var resizeStartMouseX: CGFloat?
 
@@ -270,15 +271,19 @@ final class NotchController: ObservableObject {
 
     // MARK: - 横向调整宽度
 
-    /// 用屏幕绝对坐标计算拖动距离，避免居中窗口移动反过来扰动 SwiftUI 的局部 translation。
-    /// 面板以刘海为中心，因此边缘移动 1pt 对应总宽度变化 2pt。
-    func resizePanel(from edge: HorizontalEdge, mouseScreenX: CGFloat) {
+    /// 由 AppKit 的 mouseDown 显式固定一次拖动会话，窗口 frame 变化时不重新起算。
+    func beginPanelResize(from edge: HorizontalEdge, mouseScreenX: CGFloat) {
         guard isOpen else { return }
-        if resizeStartWidth == nil {
-            resizeStartWidth = panelWidth
-            resizeStartMouseX = mouseScreenX
-        }
-        guard let startWidth = resizeStartWidth,
+        resizeEdge = edge
+        resizeStartWidth = panelWidth
+        resizeStartMouseX = mouseScreenX
+    }
+
+    /// 用 AppKit 事件的屏幕绝对坐标计算距离；面板保持居中，边缘移动 1pt 对应总宽度变化 2pt。
+    func updatePanelResize(mouseScreenX: CGFloat) {
+        guard isOpen,
+              let edge = resizeEdge,
+              let startWidth = resizeStartWidth,
               let startMouseX = resizeStartMouseX else { return }
         let mouseDelta = mouseScreenX - startMouseX
         let signedDelta = edge == .trailing ? mouseDelta : -mouseDelta
@@ -287,6 +292,7 @@ final class NotchController: ObservableObject {
 
     func endPanelResize() {
         guard resizeStartWidth != nil else { return }
+        resizeEdge = nil
         resizeStartWidth = nil
         resizeStartMouseX = nil
         settings.setPanelWidth(Double(panelWidth))

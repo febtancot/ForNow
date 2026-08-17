@@ -238,28 +238,12 @@ private struct HorizontalPanelResizeHandle: View {
             Capsule()
                 .fill(Color.primary.opacity(hovering ? 0.28 : 0))
                 .frame(width: 2, height: 36)
+            PanelResizeEventView(edge: edge, hovering: $hovering)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: 10)
         .frame(maxHeight: .infinity)
         .contentShape(Rectangle())
-        .onHover { inside in
-            if inside, !hovering {
-                NSCursor.resizeLeftRight.push()
-            } else if !inside, hovering {
-                NSCursor.pop()
-            }
-            hovering = inside
-        }
-        .onDisappear {
-            if hovering { NSCursor.pop() }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    controller.resizePanel(from: edge, mouseScreenX: NSEvent.mouseLocation.x)
-                }
-                .onEnded { _ in controller.endPanelResize() }
-        )
         .help("拖动调整面板宽度")
         .accessibilityElement()
         .accessibilityLabel(edge == .leading ? "从左边缘调整面板宽度" : "从右边缘调整面板宽度")
@@ -271,6 +255,106 @@ private struct HorizontalPanelResizeHandle: View {
             @unknown default: break
             }
         }
+    }
+}
+
+/// AppKit 会把 mouseDown 后的 mouseDragged / mouseUp 持续发送给同一个 NSView，
+/// 即使拖动过程中窗口 frame 不断变化；这避免 SwiftUI DragGesture 因宿主窗口移动而中断或重建。
+private struct PanelResizeEventView: NSViewRepresentable {
+    let edge: HorizontalEdge
+    @Binding var hovering: Bool
+    @EnvironmentObject private var controller: NotchController
+
+    func makeNSView(context: Context) -> PanelResizeTrackingView {
+        let view = PanelResizeTrackingView()
+        configure(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: PanelResizeTrackingView, context: Context) {
+        configure(nsView)
+    }
+
+    private func configure(_ view: PanelResizeTrackingView) {
+        let controller = controller
+        view.onBegin = { [weak controller] mouseScreenX in
+            controller?.beginPanelResize(from: edge, mouseScreenX: mouseScreenX)
+        }
+        view.onDrag = { [weak controller] mouseScreenX in
+            controller?.updatePanelResize(mouseScreenX: mouseScreenX)
+        }
+        view.onEnd = { [weak controller] in
+            controller?.endPanelResize()
+        }
+        view.onHoverChange = { inside in
+            hovering = inside
+        }
+    }
+}
+
+private final class PanelResizeTrackingView: NSView {
+    var onBegin: ((CGFloat) -> Void)?
+    var onDrag: ((CGFloat) -> Void)?
+    var onEnd: (() -> Void)?
+    var onHoverChange: ((Bool) -> Void)?
+
+    private var trackingArea: NSTrackingArea?
+    private var isDragging = false
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(rect: .zero,
+                                  options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  owner: self,
+                                  userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHoverChange?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHoverChange?(false)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isDragging = true
+        onBegin?(screenX(for: event))
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isDragging else { return }
+        onDrag?(screenX(for: event))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        finishDragging()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { finishDragging() }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    private func finishDragging() {
+        guard isDragging else { return }
+        isDragging = false
+        onEnd?()
+    }
+
+    private func screenX(for event: NSEvent) -> CGFloat {
+        guard let eventWindow = event.window else { return NSEvent.mouseLocation.x }
+        return eventWindow.convertPoint(toScreen: event.locationInWindow).x
     }
 }
 
