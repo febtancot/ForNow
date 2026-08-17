@@ -254,9 +254,9 @@ private struct HorizontalPanelResizeHandle: View {
             if hovering { NSCursor.pop() }
         }
         .gesture(
-            DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                .onChanged { value in
-                    controller.resizePanel(from: edge, translation: value.translation.width)
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    controller.resizePanel(from: edge, mouseScreenX: NSEvent.mouseLocation.x)
                 }
                 .onEnded { _ in controller.endPanelResize() }
         )

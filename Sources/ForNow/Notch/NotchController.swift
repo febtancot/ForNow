@@ -44,6 +44,7 @@ final class NotchController: ObservableObject {
     /// 面板是否因拖入而展开（用于拖入落下后自动收起）。
     private var openedByDrag = false
     private var resizeStartWidth: CGFloat?
+    private var resizeStartMouseX: CGFloat?
 
     init(store: StashStore, settings: AppSettings) {
         self.store = store
@@ -58,6 +59,13 @@ final class NotchController: ObservableObject {
             .sink { [weak self] in
                 guard let self, self.isOpen else { return }
                 self.window.contentHeight = self.openHeight()
+            }
+            .store(in: &cancellables)
+
+        settings.$panelWidth
+            .dropFirst()
+            .sink { [weak self] width in
+                self?.applyPanelWidth(CGFloat(width), persist: false)
             }
             .store(in: &cancellables)
 
@@ -262,18 +270,25 @@ final class NotchController: ObservableObject {
 
     // MARK: - 横向调整宽度
 
+    /// 用屏幕绝对坐标计算拖动距离，避免居中窗口移动反过来扰动 SwiftUI 的局部 translation。
     /// 面板以刘海为中心，因此边缘移动 1pt 对应总宽度变化 2pt。
-    func resizePanel(from edge: HorizontalEdge, translation: CGFloat) {
+    func resizePanel(from edge: HorizontalEdge, mouseScreenX: CGFloat) {
         guard isOpen else { return }
-        if resizeStartWidth == nil { resizeStartWidth = panelWidth }
-        guard let startWidth = resizeStartWidth else { return }
-        let signedTranslation = edge == .trailing ? translation : -translation
-        applyPanelWidth(startWidth + signedTranslation * 2, persist: false)
+        if resizeStartWidth == nil {
+            resizeStartWidth = panelWidth
+            resizeStartMouseX = mouseScreenX
+        }
+        guard let startWidth = resizeStartWidth,
+              let startMouseX = resizeStartMouseX else { return }
+        let mouseDelta = mouseScreenX - startMouseX
+        let signedDelta = edge == .trailing ? mouseDelta : -mouseDelta
+        applyPanelWidth(startWidth + signedDelta * 2, persist: false)
     }
 
     func endPanelResize() {
         guard resizeStartWidth != nil else { return }
         resizeStartWidth = nil
+        resizeStartMouseX = nil
         settings.setPanelWidth(Double(panelWidth))
     }
 

@@ -31,6 +31,17 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.panelWidth, AppSettings.maximumPanelWidth)
     }
 
+    func testResetPanelWidthRestoresAndPersistsDefault() {
+        let defaults = makeDefaults()
+        let settings = AppSettings(defaults: defaults)
+        settings.setPanelWidth(560)
+
+        settings.resetPanelWidth()
+
+        XCTAssertEqual(settings.panelWidth, AppSettings.defaultPanelWidth)
+        XCTAssertEqual(AppSettings(defaults: defaults).panelWidth, AppSettings.defaultPanelWidth)
+    }
+
     private func makeDefaults() -> UserDefaults {
         let suite = "AppSettingsTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

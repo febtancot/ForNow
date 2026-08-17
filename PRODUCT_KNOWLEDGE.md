@@ -27,7 +27,7 @@
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
 | 点击刘海开合面板 | ✅ | 整个刘海宽度（缺口下方热区）可点；Esc/点外收起 |
-| 面板宽度 | ✅ | 默认恢复为 384pt；展开后可拖动左右完整边缘横向调整，保持顶部居中；宽度按屏幕/刘海安全范围限制并跨重启保存 |
+| 面板宽度 | ✅ | 默认 384pt；展开后可拖动左右完整边缘横向调整，保持顶部居中；拖动采用鼠标屏幕绝对坐标，窗口移动时不会反馈抖动；宽度按屏幕/刘海安全范围限制并跨重启保存，设置中可恢复默认宽度 |
 | 拖近自动展开 | ✅ | 拖内容进入刘海热区自动展开，落下入库后自动收起 |
 | `⌘V` 粘贴入库 | ✅ | 优先级 文件>图片>链接>富文本>纯文本（`PasteboardImporter`，有单测）；输入条聚焦时由输入条原生处理 |
 | 快速录入 | ✅ | 面板底部输入条，**点击聚焦**后打字，回车入库置顶并收起；纯文字建文字项、http(s) 地址自动建链接项；文字超长时输入条自动扩展为多行（上限 8 行后内部滚动）|
@@ -57,7 +57,7 @@
 
 - **刘海命中区**：刘海缺口本身无可点击像素，真正命中的是缺口正下方一条覆盖刘海宽度、下延 ~18pt 的热区；透明命中层用 `Color.white.opacity(0.001)`（`Color.clear` 只响应悬停、不响应点击）。
 - **首次点击**：面板用 `NotchHostingView` 重写 `acceptsFirstMouse` 返回 true，应用未激活时首击也生效。
-- **展开面板宽度**：默认 384pt。展开后左右边缘各有 10pt 透明拖拽命中区，悬停显示细线并切换横向缩放光标；面板始终以刘海为中心，边缘移动 1pt 对应总宽度变化 2pt。全局范围为 320–720pt，实际还会按当前屏幕宽度及 `刘海宽度 + 96pt` 安全下限动态限制。拖拽结束（或拖拽中收起）通过 `AppSettings.panelWidth` 写入 UserDefaults，重启继续使用；VoiceOver 可按 32pt 步长增减。
+- **展开面板宽度**：默认 384pt。展开后左右边缘各有 10pt 透明拖拽命中区，悬停显示细线并切换横向缩放光标；面板始终以刘海为中心，边缘移动 1pt 对应总宽度变化 2pt。拖动以 `NSEvent.mouseLocation.x` 的屏幕绝对坐标为基准，不再使用会随居中窗口移动而变化的 SwiftUI translation，避免拖动中的位置反馈和左右抖动。全局范围为 320–720pt，实际还会按当前屏幕宽度及 `刘海宽度 + 96pt` 安全下限动态限制。拖拽结束（或拖拽中收起）通过 `AppSettings.panelWidth` 写入 UserDefaults，重启继续使用；设置「面板」显示当前宽度并可恢复默认 384pt，已展开面板会立即同步；VoiceOver 可按 32pt 步长增减。
 - **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、录音在当前行播放/暂停、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标与悬停快捷操作**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。鼠标进入行后，音频图标叠加播放/暂停、文件夹图标叠加打开、普通文件和图片图标叠加快速预览；按钮直接覆盖在 34×34 图标命中区，不再占用行尾空间。音频活动期间按钮保持可见，便于随时暂停；VoiceOver 行操作仍提供等价的播放、打开或预览动作。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
@@ -69,14 +69,14 @@
 - **文件去重**：第一层按规范化后的受管 URL 识别面板自身拖出的文件、目录和录音，在复制前直接返回原项目（目录也可拦截）；第二层为文件/图片/音频计算 SHA-256（`ContentHasher`，流式读取不整载内存，存入 `StashItem.contentHash`），`StashStore.insert` 与已有（含同批）项目比对，内容相同则跳过入库并清理其暂存副本。拖入/粘贴提示「已存在」并高亮原项目，有重复时不自动收起面板。**旧数据兼容**：`load()` 时为无哈希的历史文件、图片和录音补算并写回元数据（一次性迁移）。
 - **日期显示**：每行副标题时间戳为「日期 + 时间」（如 8月16日 22:30）。
 - **快速录入（输入条，面板底部）**：面板打开**不**自动聚焦（保证 ⌘V 走传统粘贴入库），点击输入条才开始打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行输入区（上限 8 行，超出后**定高滚动、显示滚动条**）。**状态隔离与高度测量**：草稿/聚焦状态在独立 `DraftModel`（仅输入条观察），打字/粘贴只重绘输入条；高度测量用 `DraftTextMetrics`（TextKit 惰性排版、只排前 8 行，成本与行长成正比、与全文长度无关，另对超长文本截断测量前缀），窗口高度由合并去抖的 `draftDidChange` 事件驱动 `NotchWindow.contentHeight` 直接调整，粘贴大段文字不卡顿、无逐帧动画重排。
-- **设置窗口入口**：状态栏菜单「设置…」→ `StatusItemController` 回调 → `AppDelegate.onOpenSettings` → SwiftUI `openSettings` 动作（由 `ForNowApp` 场景内容经 `onChange(of: settingsVersion, initial: true)` 注入；`settingsVersion` 由 `settings.objectWillChange` 驱动递增，保证 body 至少评估一次）。AppKit 的 `showSettingsWindow:` 在新版 SDK 已移除、不可用。
+- **设置窗口入口**：状态栏菜单「设置…」→ `StatusItemController` 回调 → `AppDelegate.onOpenSettings` → SwiftUI `openSettings` 动作（由 `ForNowApp` 场景内容经 `onChange(of: settingsVersion, initial: true)` 注入；`settingsVersion` 由 `settings.objectWillChange` 驱动递增，保证 body 至少评估一次）。AppKit 的 `showSettingsWindow:` 在新版 SDK 已移除、不可用。通用页「面板」区显示当前宽度，并提供「恢复默认宽度」；恢复后持久化 384pt，并通过 `AppSettings.$panelWidth` 实时更新已打开的面板。
 
 ## 技术架构
 
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：80 个单测，无需 app host。
+- `ForNowKitTests`：81 个单测，无需 app host。
 - 关键文件：`NotchController`（窗口/开合/宽度调整/拖入/粘贴/选择/反馈/录音与播放协调）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`AppSettings`（含持久化面板宽度）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
@@ -153,3 +153,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-17 · 图标悬停快捷操作**：音频播放/暂停从行尾迁到音频图标遮罩，文件夹图标悬停显示直接打开，普通文件和图片图标悬停显示快速预览；音频活动时按钮常显，避免移开鼠标后无法暂停。保留双击、右键与 VoiceOver 等价动作，不增加行宽占用。74 单测绿；悬停命中、遮罩对比度与拖拽手感需本机交互验收。
 - **2026-08-17 · 锁定置顶与刘海安全布局**：`StashStore` 新增稳定锁定分区，锁定/解锁、新增项目、回收站恢复和重启加载后锁定项都永远位于顶部；新录音滚动目标改为具体项目 id。展开面板由 384pt 加宽到 440pt，让右上回收站入口避开刘海；全选/取消全选迁到左下操作栏、快捷文本上方。新增 3 项排序测试，77 单测绿；实际刘海避让和底部操作密度需本机视觉验收。
 - **2026-08-17 · 可拖拽自定义面板宽度**：全选迁到底部后，默认展开宽度由 440pt 恢复为 384pt；左右完整边缘新增 10pt 拖拽区和缩放光标，窗口保持顶部居中对称伸缩。宽度受 320–720pt、屏幕边距及刘海安全下限共同约束，拖拽结束/中途收起时持久化到 `AppSettings.panelWidth`，并提供 VoiceOver 步进调整。新增 3 项设置测试，80 单测绿；边缘命中、连续缩放手感和不同屏幕切换需本机交互验收。
+- **2026-08-17 · 面板宽度拖动稳定性与默认恢复**：修复居中窗口调整 frame 后反向扰动 SwiftUI drag translation、导致拖动时左右乱飘的问题；拖动起点和当前位置统一改用稳定的屏幕绝对鼠标 X 坐标。设置通用页新增「面板」区，显示当前宽度并支持恢复默认 384pt，恢复会持久化且实时作用于已展开面板。新增 1 项恢复与持久化测试，81 单测绿；连续拖动手感仍需本机交互验收。

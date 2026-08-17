@@ -12,7 +12,7 @@ struct SettingsView: View {
             updateTab
                 .tabItem { Label("更新", systemImage: "arrow.down.circle") }
         }
-        .frame(width: 460, height: 340)
+        .frame(width: 460, height: 400)
     }
 
     private var generalTab: some View {
@@ -24,6 +24,21 @@ struct SettingsView: View {
             Section("反馈") {
                 Toggle("声音反馈", isOn: $settings.soundFeedback)
                 Toggle("动画效果", isOn: $settings.animations)
+            }
+            Section("面板") {
+                LabeledContent("宽度") {
+                    HStack(spacing: 10) {
+                        Text("\(Int(settings.panelWidth)) pt")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        Button("恢复默认宽度") { settings.resetPanelWidth() }
+                            .buttonStyle(.link)
+                            .disabled(settings.panelWidth == AppSettings.defaultPanelWidth)
+                    }
+                }
+                Text("也可以拖动展开面板的左右边缘调整。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("全局快捷键") {
                 LabeledContent("显示 / 隐藏面板") {

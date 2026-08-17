@@ -46,6 +46,10 @@ public final class AppSettings: ObservableObject {
         defaults.set(panelWidth, forKey: Keys.panelWidth)
     }
 
+    public func resetPanelWidth() {
+        setPanelWidth(Self.defaultPanelWidth)
+    }
+
     @Published public var hotKey: GlobalHotKey {
         didSet { hotKey.save(to: defaults) }
     }
