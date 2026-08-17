@@ -151,7 +151,7 @@ struct OpenPanelView: View {
         .foregroundStyle(.secondary)
         .disabled(store.items.isEmpty)
         .confirmationDialog("清空全部暂存项目？", isPresented: $confirmingClear, titleVisibility: .visible) {
-            Button("清空全部", role: .destructive) { store.removeAll() }
+            Button("清空全部", role: .destructive) { controller.clearAll() }
             Button("取消", role: .cancel) {}
         } message: {
             Text(clearAllMessage)

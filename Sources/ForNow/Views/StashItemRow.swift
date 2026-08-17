@@ -7,6 +7,7 @@ struct StashItemRow: View {
     let item: StashItem
     @EnvironmentObject private var store: StashStore
     @EnvironmentObject private var controller: NotchController
+    @EnvironmentObject private var audioPlayer: AudioPlaybackController
     @State private var hovering = false
     @State private var lastClickAt: Date?
 
@@ -31,12 +32,19 @@ struct StashItemRow: View {
                 Text(item.displayName)
                     .lineLimit(1)
                     .font(.system(size: 12, weight: .medium))
-                Text(subtitle)
-                    .lineLimit(1)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                if item.kind == .audio, audioPlayer.isActive(item.id) {
+                    activeAudioProgress
+                } else {
+                    Text(subtitle)
+                        .lineLimit(1)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 4)
+            if item.kind == .audio {
+                audioPlayButton
+            }
             if item.locked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10))
@@ -84,7 +92,7 @@ struct StashItemRow: View {
         }
         .onDrag { ItemActions.dragProvider(item, store: store) }
         .contextMenu { contextMenu }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("\(kindLabel)，\(item.displayName)\(isSelected ? "，已选中" : "")\(item.locked ? "，已锁定" : "")")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
@@ -110,22 +118,28 @@ struct StashItemRow: View {
                 Label("预览原文", systemImage: "eye")
             }
         }
-        if item.kind == .file || item.kind == .image || item.kind == .link || item.kind == .audio {
+        if item.kind == .audio {
+            Button { controller.toggleAudioPlayback(item) } label: {
+                Label(audioPlayer.isPlaying && audioPlayer.isActive(item.id) ? "暂停" : "播放",
+                      systemImage: audioPlayer.isPlaying && audioPlayer.isActive(item.id) ? "pause.fill" : "play.fill")
+            }
+        }
+        if item.kind == .file || item.kind == .image || item.kind == .link {
             Button {
                 ItemActions.open(item, store: store)
             } label: {
                 Label("打开", systemImage: "arrow.up.forward.app")
             }
         }
-        if item.kind == .file || item.kind == .image || item.kind == .audio {
+        if item.kind == .file || item.kind == .image {
             Button {
                 controller.quickLook(item)
             } label: {
                 Label("快速预览", systemImage: "eye")
             }
-            Button {
-                ItemActions.revealInFinder(item, store: store)
-            } label: {
+        }
+        if item.kind == .file || item.kind == .image || item.kind == .audio {
+            Button { ItemActions.revealInFinder(item, store: store) } label: {
                 Label("在 Finder 中显示", systemImage: "folder")
             }
         }
@@ -137,12 +151,42 @@ struct StashItemRow: View {
         }
     }
 
-    /// 双击激活：文字→预览原文；文件/图片/链接→打开。
+    /// 双击激活：文字→预览原文；录音→面板内播放/暂停；文件/图片/链接→打开。
     private func activate() {
         if item.kind == .text {
             controller.previewText(item)
+        } else if item.kind == .audio {
+            controller.toggleAudioPlayback(item)
         } else {
             ItemActions.open(item, store: store)
+        }
+    }
+
+    private var audioPlayButton: some View {
+        let playing = audioPlayer.isPlaying && audioPlayer.isActive(item.id)
+        return Button { controller.toggleAudioPlayback(item) } label: {
+            Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill")
+                .font(.system(size: 18))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(playing ? Color.accentColor : Color.secondary)
+        .help(playing ? "暂停" : "播放")
+        .accessibilityLabel(playing ? "暂停 \(item.displayName)" : "播放 \(item.displayName)")
+    }
+
+    private var activeAudioProgress: some View {
+        HStack(spacing: 6) {
+            Slider(value: Binding(get: { audioPlayer.currentTime },
+                                  set: { audioPlayer.seek(to: $0) }),
+                   in: 0...max(audioPlayer.duration, 0.1))
+                .controlSize(.mini)
+                .frame(maxWidth: 96)
+                .accessibilityLabel("播放进度")
+                .accessibilityValue("\(StashItem.durationText(seconds: audioPlayer.currentTime)) / \(StashItem.durationText(seconds: audioPlayer.duration))")
+            Text("\(StashItem.durationText(seconds: audioPlayer.currentTime)) / \(StashItem.durationText(seconds: audioPlayer.duration))")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 

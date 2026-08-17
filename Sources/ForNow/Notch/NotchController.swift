@@ -19,6 +19,8 @@ final class NotchController: ObservableObject {
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
+    /// 面板内单实例音频播放器（播放/暂停、进度、拖动定位）。
+    let audioPlayer = AudioPlaybackController()
     /// 录音状态机（mic 点击开始/停止，停止后音频入库）。
     lazy var recorder = RecordingController(store: store) { [weak self] message in
         self?.feedback(message)
@@ -57,6 +59,7 @@ final class NotchController: ObservableObject {
             .environmentObject(settings)
             .environmentObject(self)
             .environmentObject(draftModel)
+            .environmentObject(audioPlayer)
             .environmentObject(recorder)
         let hosting = NotchHostingView(rootView: AnyView(root))
         hosting.autoresizingMask = [.width, .height]
@@ -139,6 +142,7 @@ final class NotchController: ObservableObject {
     func deleteSelection() {
         guard !selection.isEmpty else { return }
         let lockedCount = store.items.filter { selection.contains($0.id) && $0.locked }.count
+        stopPlaybackIfRemoving(store.items.filter { selection.contains($0.id) })
         let removed = store.remove(ids: selection)
         selection.removeAll()
         if lockedCount > 0 {
@@ -158,6 +162,7 @@ final class NotchController: ObservableObject {
         guard !items.isEmpty else { return }
         let lockedCount = items.filter(\.locked).count
         let ids = Set(items.map(\.id))
+        stopPlaybackIfRemoving(items)
         let removed = store.remove(ids: ids)
         selection.subtract(ids)
         if lockedCount > 0 {
@@ -177,6 +182,18 @@ final class NotchController: ObservableObject {
         } else {
             feedback(allLocked ? "已解锁" : "已锁定")
         }
+    }
+
+    /// 清空全部未锁定项目；若正在播放的项目会被清空，先停止播放。
+    func clearAll() {
+        stopPlaybackIfRemoving(store.items)
+        store.removeAll()
+    }
+
+    private func stopPlaybackIfRemoving(_ items: [StashItem]) {
+        guard let activeID = audioPlayer.activeItemID,
+              items.contains(where: { $0.id == activeID && !$0.locked }) else { return }
+        audioPlayer.stop()
     }
 
     // MARK: - 几何
@@ -522,7 +539,27 @@ final class NotchController: ObservableObject {
                 NSSound.beep()
             }
         } else {
+            // 避免扬声器正在播放的内容被麦克风重新录入。
+            audioPlayer.stop()
             recorder.start()
+        }
+    }
+
+    // MARK: - 面板内音频播放
+
+    func toggleAudioPlayback(_ item: StashItem) {
+        guard item.kind == .audio else { return }
+        guard !recorder.isRecording else {
+            feedback("请先停止录音再播放")
+            return
+        }
+        guard let url = store.absoluteURL(for: item),
+              FileManager.default.fileExists(atPath: url.path) else {
+            feedback("录音文件不存在")
+            return
+        }
+        if !audioPlayer.toggle(itemID: item.id, fileURL: url) {
+            feedback("无法播放这段录音")
         }
     }
 

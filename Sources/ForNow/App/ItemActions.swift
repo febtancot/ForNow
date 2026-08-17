@@ -51,7 +51,7 @@ enum ItemActions {
 
     static func open(_ item: StashItem, store: StashStore) {
         switch item.kind {
-        case .file, .image, .audio:
+        case .file, .image:
             if let url = store.absoluteURL(for: item) {
                 NSWorkspace.shared.open(url)
             }
@@ -59,7 +59,7 @@ enum ItemActions {
             if let string = item.urlString, let url = URL(string: string) {
                 NSWorkspace.shared.open(url)
             }
-        case .text:
+        case .text, .audio:
             break
         }
     }
