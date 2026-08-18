@@ -75,7 +75,11 @@ final class NotchController: ObservableObject {
 
         settings.$attachedDisplayIDs
             .dropFirst()
-            .sink { [weak self] _ in self?.refreshAttachedWindows() }
+            .sink { [weak self] displayIDs in
+                // @Published 在属性写入前发送新值；必须直接使用回调参数，
+                // 此处若回读 settings 会拿到旧集合，导致设置开关变化后窗口不刷新。
+                self?.refreshAttachedWindows(configuredIDs: displayIDs)
+            }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
@@ -273,14 +277,14 @@ final class NotchController: ObservableObject {
 
     // MARK: - 几何
 
-    private func refreshAttachedWindows() {
+    private func refreshAttachedWindows(configuredIDs: Set<String>? = nil) {
         let screensByID = Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { screen in
             DisplayIdentity.identifier(for: screen).map { ($0, screen) }
         })
         let availableIDs = NSScreen.screens.compactMap(DisplayIdentity.identifier(for:))
         let defaultID = Self.defaultScreen(in: NSScreen.screens).flatMap(DisplayIdentity.identifier(for:))
         let targetIDs = DisplayAttachmentSelection.resolvedIDs(
-            configuredIDs: settings.attachedDisplayIDs,
+            configuredIDs: configuredIDs ?? settings.attachedDisplayIDs,
             availableIDs: availableIDs,
             defaultID: defaultID
         )
