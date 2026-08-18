@@ -8,6 +8,8 @@ import Combine
 @MainActor
 final class NotchController: ObservableObject {
     @Published private(set) var isOpen = false
+    /// 当前展开面板所在的显示器；其余已配置显示器仍保持收起态小药丸。
+    @Published private(set) var activeDisplayID: String?
     /// 拖入内容悬停时高亮（供面板反馈）。
     @Published var isDropTargeted = false
     /// 克制的操作反馈提示（如"已复制"）。
@@ -35,7 +37,8 @@ final class NotchController: ObservableObject {
     let store: StashStore
     let settings: AppSettings
 
-    private let window: NotchWindow
+    private var windows: [String: NotchWindow] = [:]
+    private var attachedDisplayOrder: [String] = []
     private let textPreview = TextPreviewController()
     private var globalClickMonitor: Any?
     private var localKeyMonitor: Any?
@@ -50,16 +53,16 @@ final class NotchController: ObservableObject {
     init(store: StashStore, settings: AppSettings) {
         self.store = store
         self.settings = settings
-        self.window = NotchWindow()
         self.panelWidth = CGFloat(settings.panelWidth)
-        self.panelWidth = clampedPanelWidth(self.panelWidth)
-        window.contentHeight = Self.openHeight(fieldHeight: DraftTextMetrics.lineHeight)
 
         draftModel.onSubmit = { [weak self] in self?.submitDraft() }
         draftModel.draftDidChange
             .sink { [weak self] in
-                guard let self, self.isOpen else { return }
-                self.window.contentHeight = self.openHeight()
+                guard let self, self.isOpen,
+                      let displayID = self.activeDisplayID,
+                      let window = self.windows[displayID] else { return }
+                window.contentHeight = self.openHeight()
+                self.setFrame(self.openFrame(for: displayID), on: displayID, animate: false)
             }
             .store(in: &cancellables)
 
@@ -70,38 +73,55 @@ final class NotchController: ObservableObject {
             }
             .store(in: &cancellables)
 
-        let root = NotchRootView()
-            .environmentObject(store)
-            .environmentObject(settings)
-            .environmentObject(self)
-            .environmentObject(draftModel)
-            .environmentObject(audioPlayer)
-            .environmentObject(recorder)
-        let hosting = NotchHostingView(rootView: AnyView(root))
-        hosting.autoresizingMask = [.width, .height]
-        window.contentView = hosting
+        settings.$attachedDisplayIDs
+            .dropFirst()
+            .sink { [weak self] _ in self?.refreshAttachedWindows() }
+            .store(in: &cancellables)
 
-        setFrame(closedFrame(), animate: false)
-        window.orderFrontRegardless()
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .sink { [weak self] _ in self?.refreshAttachedWindows() }
+            .store(in: &cancellables)
+
+        refreshAttachedWindows()
+        panelWidth = clampedPanelWidth(panelWidth)
     }
 
     // MARK: - 开合
 
     func toggle() { isOpen ? close() : open() }
 
-    func open() {
-        guard !isOpen else { return }
+    func isOpen(on displayID: String) -> Bool {
+        isOpen && activeDisplayID == displayID
+    }
+
+    /// 展开指定屏幕上的面板；未指定时优先使用已选的刘海屏，其次主屏。
+    func open(on requestedDisplayID: String? = nil) {
+        guard let displayID = resolvedOpenDisplayID(requestedDisplayID),
+              let window = windows[displayID] else { return }
+        if isOpen, activeDisplayID == displayID { return }
+
+        if let previousID = activeDisplayID, previousID != displayID {
+            setFrame(closedFrame(for: previousID), on: previousID, animate: settings.animations)
+            windows[previousID]?.orderFrontRegardless()
+        }
+
+        let wasOpen = isOpen
+        activeDisplayID = displayID
         isOpen = true
         openedByDrag = false
-        setFrame(openFrame(), animate: settings.animations)
+        panelWidth = clampedPanelWidth(CGFloat(settings.panelWidth))
+        window.contentHeight = openHeight()
+        setFrame(openFrame(for: displayID), on: displayID, animate: settings.animations)
         window.makeKeyAndOrderFront(nil)
-        installMonitors()
+        if !wasOpen { installMonitors() }
     }
 
     func close() {
         guard isOpen else { return }
         if resizeStartWidth != nil { endPanelResize() }
+        let closingDisplayID = activeDisplayID
         isOpen = false
+        activeDisplayID = nil
         isDropTargeted = false
         openedByDrag = false
         // 先移除键盘监听，避免清空草稿触发输入条重绘时仍在拦截按键。
@@ -110,14 +130,16 @@ final class NotchController: ObservableObject {
         draftModel.isTyping = false
         selection.removeAll()
         isShowingTrash = false
-        setFrame(closedFrame(), animate: settings.animations)
-        window.orderFrontRegardless()
+        if let displayID = closingDisplayID {
+            setFrame(closedFrame(for: displayID), on: displayID, animate: settings.animations)
+            windows[displayID]?.orderFrontRegardless()
+        }
     }
 
     /// 拖动内容靠近 Notch 时自动展开。
-    func openForDrag() {
-        guard !isOpen else { return }
-        open()
+    func openForDrag(on displayID: String) {
+        guard !isOpen(on: displayID) else { return }
+        open(on: displayID)
         openedByDrag = true
     }
 
@@ -251,23 +273,97 @@ final class NotchController: ObservableObject {
 
     // MARK: - 几何
 
-    private func targetScreen() -> NSScreen {
-        if let notched = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) {
-            return notched
+    private func refreshAttachedWindows() {
+        let screensByID = Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { screen in
+            DisplayIdentity.identifier(for: screen).map { ($0, screen) }
+        })
+        let availableIDs = NSScreen.screens.compactMap(DisplayIdentity.identifier(for:))
+        let defaultID = Self.defaultScreen(in: NSScreen.screens).flatMap(DisplayIdentity.identifier(for:))
+        let targetIDs = DisplayAttachmentSelection.resolvedIDs(
+            configuredIDs: settings.attachedDisplayIDs,
+            availableIDs: availableIDs,
+            defaultID: defaultID
+        )
+
+        if isOpen, let activeDisplayID, !targetIDs.contains(activeDisplayID) {
+            close()
         }
-        return NSScreen.main ?? NSScreen.screens.first!
+
+        let targetSet = Set(targetIDs)
+        for (displayID, window) in Array(windows) where !targetSet.contains(displayID) {
+            window.orderOut(nil)
+            window.contentView = nil
+            windows.removeValue(forKey: displayID)
+        }
+
+        attachedDisplayOrder = targetIDs
+        panelWidth = clampedPanelWidth(CGFloat(settings.panelWidth))
+        for displayID in targetIDs {
+            guard let screen = screensByID[displayID] else { continue }
+            let window = windows[displayID] ?? makeWindow(for: displayID)
+            windows[displayID] = window
+            window.contentHeight = openHeight()
+            let frame = isOpen(on: displayID)
+                ? metrics(for: screen).openFrame(width: panelWidth, height: window.contentHeight)
+                : metrics(for: screen).closedFrame()
+            window.setFrame(frame, display: true, animate: false)
+            window.orderFrontRegardless()
+        }
     }
 
-    private func metrics() -> NotchMetrics {
-        let screen = targetScreen()
+    private func makeWindow(for displayID: String) -> NotchWindow {
+        let window = NotchWindow()
+        let root = NotchRootView(displayID: displayID)
+            .environmentObject(store)
+            .environmentObject(settings)
+            .environmentObject(self)
+            .environmentObject(draftModel)
+            .environmentObject(audioPlayer)
+            .environmentObject(recorder)
+        let hosting = NotchHostingView(rootView: AnyView(root))
+        hosting.autoresizingMask = [.width, .height]
+        window.contentView = hosting
+        return window
+    }
+
+    private static func defaultScreen(in screens: [NSScreen]) -> NSScreen? {
+        screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main ?? screens.first
+    }
+
+    private func resolvedOpenDisplayID(_ requestedDisplayID: String?) -> String? {
+        if let requestedDisplayID, windows[requestedDisplayID] != nil { return requestedDisplayID }
+        if let notchedID = attachedDisplayOrder.first(where: { id in
+            (screen(for: id)?.safeAreaInsets.top ?? 0) > 0
+        }) { return notchedID }
+        if let mainID = NSScreen.main.flatMap(DisplayIdentity.identifier(for:)), windows[mainID] != nil { return mainID }
+        return attachedDisplayOrder.first
+    }
+
+    private func screen(for displayID: String) -> NSScreen? {
+        NSScreen.screens.first(where: { DisplayIdentity.identifier(for: $0) == displayID })
+    }
+
+    private func metrics(for screen: NSScreen) -> NotchMetrics {
         return NotchMetrics(screenFrame: screen.frame,
+                            visibleFrame: screen.visibleFrame,
                             safeAreaTop: screen.safeAreaInsets.top,
                             auxLeftWidth: screen.auxiliaryTopLeftArea?.width,
                             auxRightWidth: screen.auxiliaryTopRightArea?.width)
     }
 
-    private func closedFrame() -> CGRect { metrics().closedFrame() }
-    private func openFrame() -> CGRect { metrics().openFrame(width: panelWidth, height: window.contentHeight) }
+    private func metrics(for displayID: String? = nil) -> NotchMetrics? {
+        let resolvedID = displayID ?? activeDisplayID ?? resolvedOpenDisplayID(nil)
+        return resolvedID.flatMap(screen(for:)).map(metrics(for:))
+    }
+
+    private func closedFrame(for displayID: String) -> CGRect {
+        metrics(for: displayID)?.closedFrame() ?? .zero
+    }
+
+    private func openFrame(for displayID: String) -> CGRect {
+        guard let window = windows[displayID] else { return .zero }
+        return metrics(for: displayID)?.openFrame(width: panelWidth, height: window.contentHeight) ?? .zero
+    }
 
     // MARK: - 横向调整宽度
 
@@ -310,12 +406,17 @@ final class NotchController: ObservableObject {
             return
         }
         panelWidth = width
-        if isOpen { setFrame(openFrame(), animate: false) }
+        if isOpen, let activeDisplayID {
+            setFrame(openFrame(for: activeDisplayID), on: activeDisplayID, animate: false)
+        }
         if persist { settings.setPanelWidth(Double(width)) }
     }
 
     private func clampedPanelWidth(_ proposedWidth: CGFloat) -> CGFloat {
-        let currentMetrics = metrics()
+        guard let currentMetrics = metrics() else {
+            return min(max(proposedWidth, CGFloat(AppSettings.minimumPanelWidth)),
+                       CGFloat(AppSettings.maximumPanelWidth))
+        }
         let screenMaximum = max(0, currentMetrics.screenFrame.width - 40)
         let maximum = min(CGFloat(AppSettings.maximumPanelWidth), screenMaximum)
         let notchSafeMinimum = currentMetrics.hasNotch ? currentMetrics.notchWidth + 96 : 0
@@ -335,8 +436,8 @@ final class NotchController: ObservableObject {
         return 470 + clamped - DraftTextMetrics.lineHeight
     }
 
-    private func setFrame(_ frame: CGRect, animate: Bool) {
-        window.setFrame(frame, display: true, animate: animate)
+    private func setFrame(_ frame: CGRect, on displayID: String, animate: Bool) {
+        windows[displayID]?.setFrame(frame, display: true, animate: animate)
     }
 
     // MARK: - 全局事件
@@ -636,11 +737,11 @@ final class NotchController: ObservableObject {
 
     /// 点击 mic：开始录音；录音中再次点击停止并入库。
     /// 停止入库后自动展开面板并高亮新录音，方便用户看到文件已就位。
-    func toggleRecording() {
+    func toggleRecording(on displayID: String? = nil) {
         if recorder.isRecording {
             if let item = recorder.stopAndStash() {
                 feedback("已录制 · \(item.durationText ?? "")")
-                open()
+                open(on: displayID)
                 selection = [item.id]
                 scrollTargetItemID = item.id
                 scrollToTopRequest += 1 // 列表若已滚动，把新录音滚回视野

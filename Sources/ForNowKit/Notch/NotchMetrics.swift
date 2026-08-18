@@ -8,28 +8,36 @@ public struct NotchMetrics: Equatable, Sendable {
     public let hasNotch: Bool
     public let notchWidth: CGFloat
     public let notchHeight: CGFloat
+    /// 窗口的顶部吸附线。刘海屏使用物理屏幕顶边；无刘海屏使用菜单栏下方的可用区域顶边。
+    public let attachmentTopY: CGFloat
 
     /// - Parameters:
     ///   - safeAreaTop: `NSScreen.safeAreaInsets.top`，有刘海时约等于刘海高度。
     ///   - auxLeftWidth/auxRightWidth: `NSScreen.auxiliaryTopLeftArea/RightArea` 的宽度，无刘海时为 nil。
-    public init(screenFrame: CGRect, safeAreaTop: CGFloat, auxLeftWidth: CGFloat?, auxRightWidth: CGFloat?) {
+    public init(screenFrame: CGRect,
+                visibleFrame: CGRect? = nil,
+                safeAreaTop: CGFloat,
+                auxLeftWidth: CGFloat?,
+                auxRightWidth: CGFloat?) {
         self.screenFrame = screenFrame
         if let left = auxLeftWidth, let right = auxRightWidth,
            left > 0, right > 0, left + right < screenFrame.width {
             self.hasNotch = true
             self.notchWidth = screenFrame.width - left - right
             self.notchHeight = safeAreaTop > 0 ? safeAreaTop : 32
+            self.attachmentTopY = screenFrame.maxY
         } else {
             self.hasNotch = false
             self.notchWidth = 0
             self.notchHeight = 0
+            self.attachmentTopY = visibleFrame?.maxY ?? screenFrame.maxY
         }
     }
 
     /// 顶部居中的窗口 frame（顶边贴屏幕顶）。
     public func topCenteredFrame(width: CGFloat, height: CGFloat) -> CGRect {
         CGRect(x: (screenFrame.midX - width / 2).rounded(),
-               y: (screenFrame.maxY - height).rounded(),
+               y: (attachmentTopY - height).rounded(),
                width: width, height: height)
     }
 

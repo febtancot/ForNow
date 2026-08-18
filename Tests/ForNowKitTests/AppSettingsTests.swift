@@ -42,6 +42,31 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(AppSettings(defaults: defaults).panelWidth, AppSettings.defaultPanelWidth)
     }
 
+    func testDisplayAttachmentsDefaultToAutomaticMode() {
+        let settings = AppSettings(defaults: makeDefaults())
+
+        XCTAssertTrue(settings.attachedDisplayIDs.isEmpty)
+    }
+
+    func testDisplayAttachmentsPersistAcrossReload() {
+        let defaults = makeDefaults()
+        let settings = AppSettings(defaults: defaults)
+        settings.setAttachedDisplayIDs(["display-a", "display-b"])
+
+        XCTAssertEqual(AppSettings(defaults: defaults).attachedDisplayIDs, ["display-a", "display-b"])
+    }
+
+    func testResetDisplayAttachmentsRestoresAutomaticMode() {
+        let defaults = makeDefaults()
+        let settings = AppSettings(defaults: defaults)
+        settings.setAttachedDisplayIDs(["display-a"])
+
+        settings.resetAttachedDisplays()
+
+        XCTAssertTrue(settings.attachedDisplayIDs.isEmpty)
+        XCTAssertTrue(AppSettings(defaults: defaults).attachedDisplayIDs.isEmpty)
+    }
+
     private func makeDefaults() -> UserDefaults {
         let suite = "AppSettingsTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

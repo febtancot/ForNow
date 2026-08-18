@@ -18,6 +18,7 @@ public final class AppSettings: ObservableObject {
         self.animations = defaults.object(forKey: Keys.animations) as? Bool ?? true
         let storedPanelWidth = defaults.object(forKey: Keys.panelWidth).map { _ in defaults.double(forKey: Keys.panelWidth) }
         self.panelWidth = Self.clampedPanelWidth(storedPanelWidth ?? Self.defaultPanelWidth)
+        self.attachedDisplayIDs = Set(defaults.stringArray(forKey: Keys.attachedDisplayIDs) ?? [])
         self.hotKey = GlobalHotKey.load(from: defaults) ?? .default
     }
 
@@ -50,6 +51,19 @@ public final class AppSettings: ObservableObject {
         setPanelWidth(Self.defaultPanelWidth)
     }
 
+    /// 用户明确选择的小药丸吸附屏幕。空集合表示自动模式：优先带刘海的屏幕，
+    /// 否则使用主屏幕。显示器断开时保留其 id，重新接入后自动恢复。
+    @Published public private(set) var attachedDisplayIDs: Set<String>
+
+    public func setAttachedDisplayIDs(_ displayIDs: Set<String>) {
+        attachedDisplayIDs = displayIDs
+        defaults.set(displayIDs.sorted(), forKey: Keys.attachedDisplayIDs)
+    }
+
+    public func resetAttachedDisplays() {
+        setAttachedDisplayIDs([])
+    }
+
     @Published public var hotKey: GlobalHotKey {
         didSet { hotKey.save(to: defaults) }
     }
@@ -60,6 +74,7 @@ public final class AppSettings: ObservableObject {
         static let soundFeedback = "settings.soundFeedback"
         static let animations = "settings.animations"
         static let panelWidth = "settings.panelWidth"
+        static let attachedDisplayIDs = "settings.attachedDisplayIDs"
     }
 
     private static func clampedPanelWidth(_ width: Double) -> Double {

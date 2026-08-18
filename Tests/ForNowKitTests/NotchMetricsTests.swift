@@ -45,9 +45,20 @@ final class NotchMetricsTests: XCTestCase {
 
     func testExternalDisplayFallbackUsesCentreTab() {
         let external = CGRect(x: 1512, y: 0, width: 2560, height: 1440) // 右侧外接屏
-        let m = NotchMetrics(screenFrame: external, safeAreaTop: 0, auxLeftWidth: nil, auxRightWidth: nil)
+        let visible = CGRect(x: 1512, y: 0, width: 2560, height: 1414)
+        let m = NotchMetrics(screenFrame: external, visibleFrame: visible,
+                             safeAreaTop: 0, auxLeftWidth: nil, auxRightWidth: nil)
         let frame = m.closedFrame(fallbackWidth: 190)
         XCTAssertEqual(frame.width, 190)
         XCTAssertEqual(frame.midX, external.midX, accuracy: 1)
+        XCTAssertEqual(frame.maxY, visible.maxY, accuracy: 1) // 菜单栏下方
+    }
+
+    func testNotchedDisplayStillAttachesToPhysicalTopEdge() {
+        let visible = CGRect(x: 0, y: 0, width: 1512, height: 944)
+        let m = NotchMetrics(screenFrame: notchScreen, visibleFrame: visible,
+                             safeAreaTop: 38, auxLeftWidth: 620, auxRightWidth: 620)
+
+        XCTAssertEqual(m.closedFrame().maxY, notchScreen.maxY, accuracy: 1)
     }
 }

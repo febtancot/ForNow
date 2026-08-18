@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 import ForNowKit
 
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var updater: UpdaterModel
+    @State private var connectedDisplays = ConnectedDisplay.current()
 
     var body: some View {
         TabView {
@@ -12,7 +14,12 @@ struct SettingsView: View {
             updateTab
                 .tabItem { Label("更新", systemImage: "arrow.down.circle") }
         }
-        .frame(width: 460, height: 400)
+        .frame(width: 480, height: 500)
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didChangeScreenParametersNotification
+        )) { _ in
+            connectedDisplays = ConnectedDisplay.current()
+        }
     }
 
     private var generalTab: some View {
@@ -39,6 +46,43 @@ struct SettingsView: View {
                 Text("也可以拖动展开面板的左右边缘调整。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            Section("吸附屏幕") {
+                ForEach(connectedDisplays) { display in
+                    Toggle(isOn: displayBinding(for: display.id)) {
+                        HStack(spacing: 8) {
+                            Image(systemName: display.hasNotch ? "laptopcomputer" : "display")
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(display.name) · \(display.positionLabel)")
+                                if display.id == defaultDisplayID {
+                                    Text(display.hasNotch ? "默认 · 刘海下方" : "默认 · 菜单栏下方中央")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else if display.hasNotch {
+                                    Text("刘海下方")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("菜单栏下方中央")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .disabled(isOnlyEffectiveDisplay(display.id))
+                }
+
+                HStack {
+                    Text("可同时选择多块屏幕；所选屏幕断开时会临时回到默认屏幕。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("恢复默认") { settings.resetAttachedDisplays() }
+                        .buttonStyle(.link)
+                        .disabled(settings.attachedDisplayIDs.isEmpty)
+                }
             }
             Section("全局快捷键") {
                 LabeledContent("显示 / 隐藏面板") {
@@ -77,5 +121,78 @@ struct SettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         return "\(version) (\(build))"
+    }
+
+    private var defaultDisplayID: String? {
+        connectedDisplays.first(where: \.hasNotch)?.id
+            ?? NSScreen.main.flatMap(DisplayIdentity.identifier(for:))
+            ?? connectedDisplays.first?.id
+    }
+
+    private var effectiveConnectedDisplayIDs: Set<String> {
+        let available = connectedDisplays.map(\.id)
+        return Set(DisplayAttachmentSelection.resolvedIDs(
+            configuredIDs: settings.attachedDisplayIDs,
+            availableIDs: available,
+            defaultID: defaultDisplayID
+        ))
+    }
+
+    private func displayBinding(for displayID: String) -> Binding<Bool> {
+        Binding(
+            get: { effectiveConnectedDisplayIDs.contains(displayID) },
+            set: { enabled in
+                var selected = settings.attachedDisplayIDs.isEmpty
+                    ? effectiveConnectedDisplayIDs
+                    : settings.attachedDisplayIDs
+                if enabled {
+                    selected.insert(displayID)
+                } else {
+                    selected.remove(displayID)
+                }
+
+                guard !selected.isEmpty else { return }
+                if let defaultDisplayID, selected == Set([defaultDisplayID]) {
+                    settings.resetAttachedDisplays()
+                } else {
+                    settings.setAttachedDisplayIDs(selected)
+                }
+            }
+        )
+    }
+
+    private func isOnlyEffectiveDisplay(_ displayID: String) -> Bool {
+        effectiveConnectedDisplayIDs == Set([displayID])
+    }
+}
+
+private struct ConnectedDisplay: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let hasNotch: Bool
+    let positionLabel: String
+
+    static func current() -> [ConnectedDisplay] {
+        let anchor = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        return NSScreen.screens.compactMap { screen in
+            guard let id = DisplayIdentity.identifier(for: screen) else { return nil }
+            return ConnectedDisplay(id: id,
+                                    name: screen.localizedName,
+                                    hasNotch: screen.safeAreaInsets.top > 0,
+                                    positionLabel: position(of: screen, relativeTo: anchor))
+        }
+    }
+
+    private static func position(of screen: NSScreen, relativeTo anchor: NSScreen?) -> String {
+        guard let anchor else { return "屏幕" }
+        if screen === anchor { return "默认屏幕" }
+        let horizontalDistance = screen.frame.midX - anchor.frame.midX
+        let verticalDistance = screen.frame.midY - anchor.frame.midY
+        if abs(horizontalDistance) >= abs(verticalDistance) {
+            return horizontalDistance < 0 ? "左侧屏幕" : "右侧屏幕"
+        }
+        return verticalDistance < 0 ? "下方屏幕" : "上方屏幕"
     }
 }

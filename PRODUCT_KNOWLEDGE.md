@@ -50,7 +50,7 @@
 | 设置 | ✅ | 登录启动、全屏启用、声音、动画；全局快捷键录制；打开即置前（激活 App，不被其他窗口遮挡）|
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
-| 无刘海/外接屏回退 | ✅ | `NotchMetrics` 检测刘海，缺失时顶部中央热区（有单测）|
+| 多屏吸附 | ✅ | 默认仍在刘海下；设置列出当前显示器（含左右/上下位置），可单选或多选。每块已选屏幕各有一个收起态小药丸，点击哪块就只在哪块展开；外接/无刘海屏吸附在菜单栏下方中央。显示器 UUID 跨重启保存，断开时临时回退默认屏，重连自动恢复 |
 | 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查；菜单栏与设置「更新」页有「查看更新日志」（直达官网 `#update` 锚点）|
 
 ## 交互模型（关键细节）
@@ -58,6 +58,7 @@
 - **刘海命中区**：刘海缺口本身无可点击像素，真正命中的是缺口正下方一条覆盖刘海宽度、下延 ~18pt 的热区；透明命中层用 `Color.white.opacity(0.001)`（`Color.clear` 只响应悬停、不响应点击）。
 - **首次点击**：面板用 `NotchHostingView` 重写 `acceptsFirstMouse` 返回 true，应用未激活时首击也生效。
 - **展开面板宽度**：默认 384pt。展开后左右边缘各有 10pt 透明拖拽命中区，悬停显示细线并切换横向缩放光标；面板始终以刘海为中心，边缘移动 1pt 对应总宽度变化 2pt。拖动区由 AppKit `NSView` 原生接收 `mouseDown`、`mouseDragged` 和 `mouseUp`，以首次按下时的宽度和屏幕绝对 X 坐标为固定基准；即使宿主窗口在缩放中持续移动，也不会像 SwiftUI `DragGesture` 那样中断、重建或重新起算。全局范围为 320–720pt，实际还会按当前屏幕宽度及 `刘海宽度 + 96pt` 安全下限动态限制。拖拽结束（或拖拽中收起）通过 `AppSettings.panelWidth` 写入 UserDefaults，重启继续使用；设置「面板」显示当前宽度并可恢复默认 384pt，已展开面板会立即同步；VoiceOver 可按 32pt 步长增减。
+- **多屏窗口模型**：`NotchController` 按设置为每块目标屏幕维护独立 `NotchWindow`，共享同一份暂存、草稿、录音和播放状态。所有目标屏幕可同时显示收起态小药丸，但任一时刻只允许一块屏幕展开；点击另一块屏幕会把面板切换过去。默认目标优先带刘海的屏幕，其次主屏；全局快捷键和菜单栏入口也遵循这个顺序。无刘海屏使用 `visibleFrame.maxY` 作为吸附线，落在菜单栏下方；屏幕参数变化后立即重建/重定位窗口。
 - **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、录音在当前行播放/暂停、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标与悬停快捷操作**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。鼠标进入行后，音频图标叠加播放/暂停、文件夹图标叠加打开、普通文件和图片图标叠加快速预览；按钮直接覆盖在 34×34 图标命中区，不再占用行尾空间。音频活动期间按钮保持可见，便于随时暂停；VoiceOver 行操作仍提供等价的播放、打开或预览动作。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
@@ -76,8 +77,8 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：81 个单测，无需 app host。
-- 关键文件：`NotchController`（窗口/开合/宽度调整/拖入/粘贴/选择/反馈/录音与播放协调）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（几何）、`AppSettings`（含持久化面板宽度）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
+- `ForNowKitTests`：89 个单测，无需 app host。
+- 关键文件：`NotchController`（多屏窗口/开合/宽度调整/拖入/粘贴/选择/反馈/录音与播放协调）、`DisplayIdentity`（ColorSync 显示器 UUID）、`DisplayAttachmentSelection`（自动选择、多选和断开回退纯逻辑）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（含菜单栏下吸附线的几何）、`AppSettings`（持久化面板宽度与屏幕选择）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
 
@@ -93,7 +94,7 @@
 
 ## 当前状态与验证
 
-- 0.5.0（build 6）构建绿，81 单测绿；最新回归覆盖面板宽度默认值、持久化、全局范围限制与恢复默认值。
+- 0.5.0（build 6）构建绿，89 单测绿；最新回归覆盖屏幕选择持久化、多屏解析、已选屏幕断开回退、外接屏菜单栏下定位，以及原有面板宽度与数据能力。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -158,3 +159,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-17 · Sparkle 版本历史链接修复**：appcast 原只有版本专属 `sparkle:releaseNotesLink`，Sparkle 在没有 `sparkle:fullReleaseNotesLink` 时会把 0.5.0 Markdown 发布说明当作「查看版本历史记录」目标。发布流程新增 `--full-release-notes-url https://fornow.liveby.app/#update`，保留当前版本说明用于更新窗口，同时让完整历史入口统一跳转官网更新区；新增 `regenerate_appcast.sh`，可在不重发同名 DMG 的前提下从现有版本化归档重建并部署 feed。
 - **2026-08-17 · 面板宽度拖动事件层修复**：上一轮虽改用屏幕绝对坐标，但事件仍由随窗口 frame 变化的 SwiftUI `DragGesture` 管理，拖动过程仍可能中断或重建。左右边缘改为 AppKit `NSView` 原生鼠标会话，从 `mouseDown` 固定起点并持续接收 `mouseDragged` / `mouseUp`，窗口居中缩放不再改变事件归属；81 单测绿，连续拖动、途中反向及达到边界后回拖仍需本机交互验收。
 - **2026-08-17 · README 实用性重构**：仓库首页按普通用户、开发者和发布维护者三类读者重组；补齐安装、快速开始、快捷键、本地数据与隐私、设置、构建验证、目录结构和发布边界，移除已经落后于 0.5.0 的旧 MVP 摘要。命令、路径、测试数量、发布脚本和限制均按当前仓库复核。
+- **2026-08-18 · 多屏小药丸吸附**：设置「吸附屏幕」列出显示器名称与相对位置，可把收起态小药丸放到一块或多块屏幕；默认仍为刘海屏。`NotchController` 从单窗口改为按显示器 UUID 管理窗口集合，多屏同时保留入口、只展开当前交互屏；外接屏按 `visibleFrame.maxY` 定位到菜单栏下方中央。显示器断开时临时回退默认屏、重连按持久化 UUID 恢复。新增屏幕选择、持久化、断开回退和外接屏几何测试，89 单测绿；多屏热插拔、同屏点击切换和实际菜单栏间距仍需本机交互验收。
