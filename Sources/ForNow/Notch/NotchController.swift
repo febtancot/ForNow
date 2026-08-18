@@ -578,12 +578,10 @@ final class NotchController: ObservableObject {
     }
 
     private func loadURL(_ provider: NSItemProvider) async -> URL? {
-        guard provider.canLoadObject(ofClass: URL.self) else { return nil }
-        return await withCheckedContinuation { continuation in
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                continuation.resume(returning: url)
-            }
-        }
+        // Finder 的 .txt 等文档同时声明 public.file-url 与 public.text；部分 provider
+        // 无法通过 loadObject(URL.self) 还原文件 URL。先读取最权威的 file-url 原始表示，
+        // 避免回退到 String 后把真实文档错误建成文字项、绕过文件哈希去重。
+        await DropFileURLLoader.load(from: provider)
     }
 
     private func loadText(_ provider: NSItemProvider) async -> String? {

@@ -34,7 +34,7 @@
 | 录音 | ✅ | 收起态分段胶囊左侧 mic 段点击开始、再点停止入库置顶（m4a、波形图标、时长+大小；录音中变红显示实时时长）；面板头部标题旁**常驻 mic** 同样可开始/停止；首次点击弹麦克风权限；**停止前快照时长，避免 `AVAudioRecorder.stop()` 后时长归零而误判为过短**；停止入库后面板自动展开、高亮并滚到新录音；支持复制/拖出/在 Finder 显示 |
 | 面板内音频播放 | ✅ | 音频图标悬停显示播放/暂停遮罩（活动时控制常显）；播放后原位显示可拖动进度条、当前时间/总时长；双击和右键「播放」复用同一控制，不再唤起外部播放器；同一时间只播放一条，切换项目停止上一条；收起面板继续播放，删除/清空活动音频时停止 |
 | 五类内容 | ✅ | 文件/图片/文字/链接/录音；图标、缩略图、尺寸、摘要、加入日期时间 |
-| 文件去重 | ✅ | 两层防线：面板内已管理文件/目录/录音按受管 URL 直接识别，拖回面板不复制；文件/图片/音频按内容哈希（SHA-256）识别外部同内容副本。重复拖入/粘贴只保留一份，提示「已存在」并高亮原项目（有重复时面板不自动收起）；旧数据加载时补算哈希 |
+| 文件去重 | ✅ | 两层防线：面板内已管理文件/目录/录音按受管 URL 直接识别，拖回面板不复制；文件/图片/音频按内容哈希（SHA-256）识别外部同内容副本。`.txt` 等同时提供文件 URL 与纯文本的拖放 provider 强制优先读取 `public.file-url`，不会降级成文字项。重复拖入/粘贴只保留一份，提示「已存在」并高亮原项目（有重复时面板不自动收起）；旧数据加载时补算哈希 |
 | 外部录音拖入 | ✅ | 拖放声明支持 `public.audio`；优先读取音频文件承诺并在 provider 回调有效期内复制，也支持 data representation 回退；适配语音备忘录等不直接提供 file URL 的来源 |
 | 拖出 | ✅ | 文件/图片/录音提供文件 URL；**文字同时提供 .txt 文件与纯文本**（拖入 Finder 得到 txt、拖入文本框得到文字）；链接提供 URL；默认保留原项 |
 | 单选/多选/全选 | ✅ | 单击选中、⌘-单击多选、⌘A 全选；蓝色高亮；全选/取消全选按钮位于左下角、快捷文本输入区上方 |
@@ -67,7 +67,7 @@
 - **回收站**：Delete、行尾删除、右键「移到回收站」和底部「清空」只迁移元数据，不立即删除受管文件；回收站由独立 `trash.json` 保存 `TrashedItem(item, trashedAt)`，面板头部垃圾桶入口显示数量，列表显示类型与清除时间，支持行尾/右键单项恢复和底部「全部恢复」。项目保留满 30 天后，在启动加载或打开回收站时永久删除真实文件。恢复保持原 id、创建时间和文件路径并插到暂存顶部；若当前暂存已有相同内容或文件已经缺失，则保留在回收站并提示。跨 `metadata.json`/`trash.json` 写入采用数据安全顺序，启动时以活动列表为准归并同 id，避免中断写入导致恢复文件被到期清理。
 - **录音（分段胶囊 mic 段 + 面板头部常驻 mic）**：收起态胶囊条左侧 mic 段点击开始（首次弹麦克风权限）、再点停止入库，录音中变红并显示实时时长；右侧托盘段（及窗口其余区域）点击打开面板；展开面板头部标题旁同样常驻 mic（空闲 mic 图标、录音中红色「录音中 m:ss」），两态都能开始/停止；不足 0.5 秒视为误触丢弃；音频存 m4a（`AVAudioRecorder`，AAC 44.1kHz 单声道），文件名「录音-时间戳.m4a」、列表显示「录音 · 时刻」；**停止入库后面板自动展开、高亮新录音并把列表滚到顶部**（`scrollToTopRequest`）；音频行副标题显示时长（`durationText`）。实时计时由 `RecordingController.elapsedSeconds` 发布（0.5s 计时器随录音启停、cleanup 复位）；时长文案统一走 `StashItem.durationText(seconds:)`（m:ss 格式）。**胶囊条与头部 mic 按钮直接观察 `recorder`**（`@EnvironmentObject`），录音状态/计时变化只重绘这两处，不触发面板整体重渲染；收起窗口下沿热区高 26pt（`NotchMetrics.closedFrame(interactiveBelow:)`），胶囊完整落在菜单栏/刘海带下方不被遮挡。
 - **面板内播放**：`AudioPlaybackController` 用单个 `AVAudioPlayer` 管理活动项目，200ms 同步真实进度；同项切换播放/暂停，新项先停止旧项，自然结束/系统中断/解码失败会清理状态。活动音频行显示 `Slider` 与 `当前 / 总时长`，拖动直接写入 `currentTime`。音频的双击、行尾按钮和右键菜单统一走面板内播放器，`ItemActions.open` 不再为音频调用 `NSWorkspace`；收起面板不停止播放，删除/清空活动项目以及开始录音前会停止，录音进行中禁止播放以避免扬声器内容被重新录入。
-- **文件去重**：第一层按规范化后的受管 URL 识别面板自身拖出的文件、目录和录音，在复制前直接返回原项目（目录也可拦截）；第二层为文件/图片/音频计算 SHA-256（`ContentHasher`，流式读取不整载内存，存入 `StashItem.contentHash`），`StashStore.insert` 与已有（含同批）项目比对，内容相同则跳过入库并清理其暂存副本。拖入/粘贴提示「已存在」并高亮原项目，有重复时不自动收起面板。**旧数据兼容**：`load()` 时为无哈希的历史文件、图片和录音补算并写回元数据（一次性迁移）。
+- **文件去重**：拖放判型先读取 `public.file-url` 的原始 representation，再回退到通用 URL、图片、链接和纯文本，确保 Finder `.txt` 作为文件进入哈希链路。第一层按规范化后的受管 URL 识别面板自身拖出的文件、目录和录音，在复制前直接返回原项目（目录也可拦截）；第二层为文件/图片/音频计算 SHA-256（`ContentHasher`，流式读取不整载内存，存入 `StashItem.contentHash`），`StashStore.insert` 与已有（含同批）项目比对，内容相同则跳过入库并清理其暂存副本。拖入/粘贴提示「已存在」并高亮原项目，有重复时不自动收起面板。**旧数据兼容**：`load()` 时为无哈希的历史文件、图片和录音补算并写回元数据（一次性迁移）。
 - **日期显示**：每行副标题时间戳为「日期 + 时间」（如 8月16日 22:30）。
 - **快速录入（输入条，面板底部）**：面板打开**不**自动聚焦（保证 ⌘V 走传统粘贴入库），点击输入条才开始打字；回车（或点击「收起」）提交——空草稿只收起、非空建项置顶（http(s) 地址建链接项）并收起；Esc 有草稿先清空、无草稿收起；输入条聚焦期间 `⌘V`/`⌘A`/Delete 由文本框原生处理（不走列表快捷键）。输入条为可自动扩展的多行输入区（上限 8 行，超出后**定高滚动、显示滚动条**）。**状态隔离与高度测量**：草稿/聚焦状态在独立 `DraftModel`（仅输入条观察），打字/粘贴只重绘输入条；高度测量用 `DraftTextMetrics`（TextKit 惰性排版、只排前 8 行，成本与行长成正比、与全文长度无关，另对超长文本截断测量前缀），窗口高度由合并去抖的 `draftDidChange` 事件驱动 `NotchWindow.contentHeight` 直接调整，粘贴大段文字不卡顿、无逐帧动画重排。
 - **设置窗口入口**：状态栏菜单「设置…」→ `StatusItemController` 回调 → `AppDelegate.onOpenSettings` → SwiftUI `openSettings` 动作（由 `ForNowApp` 场景内容经 `onChange(of: settingsVersion, initial: true)` 注入；`settingsVersion` 由 `settings.objectWillChange` 驱动递增，保证 body 至少评估一次）。AppKit 的 `showSettingsWindow:` 在新版 SDK 已移除、不可用。通用页「面板」区显示当前宽度，并提供「恢复默认宽度」；恢复后持久化 384pt，并通过 `AppSettings.$panelWidth` 实时更新已打开的面板。
@@ -77,8 +77,8 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：89 个单测，无需 app host。
-- 关键文件：`NotchController`（多屏窗口/开合/宽度调整/拖入/粘贴/选择/反馈/录音与播放协调）、`DisplayIdentity`（ColorSync 显示器 UUID）、`DisplayAttachmentSelection`（自动选择、多选和断开回退纯逻辑）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（含菜单栏下吸附线的几何）、`AppSettings`（持久化面板宽度与屏幕选择）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
+- `ForNowKitTests`：92 个单测，无需 app host。
+- 关键文件：`NotchController`（多屏窗口/开合/宽度调整/拖入/粘贴/选择/反馈/录音与播放协调）、`DropFileURLLoader`/`DropFileURLDecoder`（拖放文件 URL 优先读取与原始表示解码）、`DisplayIdentity`（ColorSync 显示器 UUID）、`DisplayAttachmentSelection`（自动选择、多选和断开回退纯逻辑）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（含菜单栏下吸附线的几何）、`AppSettings`（持久化面板宽度与屏幕选择）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
 
@@ -94,7 +94,7 @@
 
 ## 当前状态与验证
 
-- 0.5.0（build 6）构建绿，89 单测绿；最新回归覆盖屏幕选择持久化、多屏解析、已选屏幕断开回退、外接屏菜单栏下定位，以及原有面板宽度与数据能力。
+- 0.5.0（build 6）构建绿，92 单测绿；最新回归覆盖 `.txt` 文件 URL 优先解析与纯文本共存、文件哈希去重、屏幕选择持久化、多屏解析、断开回退和外接屏定位。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -161,3 +161,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-17 · README 实用性重构**：仓库首页按普通用户、开发者和发布维护者三类读者重组；补齐安装、快速开始、快捷键、本地数据与隐私、设置、构建验证、目录结构和发布边界，移除已经落后于 0.5.0 的旧 MVP 摘要。命令、路径、测试数量、发布脚本和限制均按当前仓库复核。
 - **2026-08-18 · 多屏小药丸吸附**：设置「吸附屏幕」列出显示器名称与相对位置，可把收起态小药丸放到一块或多块屏幕；默认仍为刘海屏。`NotchController` 从单窗口改为按显示器 UUID 管理窗口集合，多屏同时保留入口、只展开当前交互屏；外接屏按 `visibleFrame.maxY` 定位到菜单栏下方中央。显示器断开时临时回退默认屏、重连按持久化 UUID 恢复。新增屏幕选择、持久化、断开回退和外接屏几何测试，89 单测绿；多屏热插拔、同屏点击切换和实际菜单栏间距仍需本机交互验收。
 - **2026-08-18 · 多屏设置实时生效修复**：修复设置中勾选 LG 等外接屏后开关与 UserDefaults 已更新、但第二个小药丸窗口直到重启才出现的问题。根因是 `@Published` 在属性真正写入前同步发布新集合，订阅回读 `settings.attachedDisplayIDs` 得到旧值；现直接把发布器回调的新集合传给窗口刷新。已在内建屏 + LG 双屏环境通过设置 UI 关闭/开启复现，并以窗口 frame/可见性验证实时增删。
+- **2026-08-18 · TXT 拖入判型与去重修复**：修复 Finder `.txt` provider 同时声明文件 URL 与纯文本时，通用 URL 对象读取失败后被降级成文字项、导致相同文档绕过 SHA-256 去重的问题。新增 `DropFileURLLoader`，先读取并解码 `public.file-url` 原始 representation，再回退通用 URL；真实 `.txt` 继续作为文件入库，纯文本拖放仍是文字项。新增 UTF-8 file URL、非法/网页 URL 拒绝和“文件 URL + 纯文本共存”优先级测试，92 单测绿。
