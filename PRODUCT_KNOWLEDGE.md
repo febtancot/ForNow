@@ -94,7 +94,7 @@
 
 ## 当前状态与验证
 
-- 0.6.0（build 7）发布候选构建绿，95 单测绿；本版本以多显示器吸附为主，TXT 内容重复识别仍有用户报告，继续排查，不作为本次发布完成项。
+- 0.6.0（build 7）已发布：95 单测绿，Universal DMG 完成 Developer ID 签名、Apple 公证与票据装订，Sparkle appcast 和 Cloudflare Pages 生产站已更新。本版本以多显示器吸附为主；TXT 内容重复识别仍有用户报告，继续排查，不作为本次发布完成项。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -163,4 +163,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-18 · 多屏设置实时生效修复**：修复设置中勾选 LG 等外接屏后开关与 UserDefaults 已更新、但第二个小药丸窗口直到重启才出现的问题。根因是 `@Published` 在属性真正写入前同步发布新集合，订阅回读 `settings.attachedDisplayIDs` 得到旧值；现直接把发布器回调的新集合传给窗口刷新。已在内建屏 + LG 双屏环境通过设置 UI 关闭/开启复现，并以窗口 frame/可见性验证实时增删。
 - **2026-08-18 · TXT 拖入判型与去重修复**：修复 Finder `.txt` provider 同时声明文件 URL 与纯文本时，通用 URL 对象读取失败后被降级成文字项、导致相同文档绕过 SHA-256 去重的问题。新增 `DropFileURLLoader`，先读取并解码 `public.file-url` 原始 representation，再回退通用 URL；真实 `.txt` 继续作为文件入库，纯文本拖放仍是文字项。新增 UTF-8 file URL、非法/网页 URL 拒绝和“文件 URL + 纯文本共存”优先级测试，92 单测绿。
 - **2026-08-18 · TXT 历史重复项归并**：真实数据复核确认新版本已生成唯一带哈希的 `response.raw.txt`，但旧版本此前生成的两个同内容文字项仍留在活动列表，造成“仍未去重”的可见结果。`StashStore` 现会在加载及 TXT（包括重复文件）进入哈希链路时，读取 TXT 文本、去 BOM 并统一换行，与历史文字项精确比较；内容相同且未锁定的文字项移入应用内回收站，锁定项保留。新增加载归并、重复 TXT 即时归并和锁定保护测试，95 单测绿。
-- **2026-08-18 · v0.6.0 发布准备**：版本升至 0.6.0（build 7），发布主题为多显示器小药丸吸附：设置可选择一块或多块屏幕，默认仍在刘海下；外接屏位于菜单栏下方中央，支持断开回退与重连恢复。TXT 内容重复识别仍有用户报告，本次只标记为已知问题，不宣称解决。
+- **2026-08-18 · v0.6.0 多显示器版本发布**：版本升至 0.6.0（build 7），发布主题为多显示器小药丸吸附：设置可选择一块或多块屏幕，默认仍在刘海下；外接屏位于菜单栏下方中央，支持断开回退、重连恢复与设置即时生效。`dist/ForNow-0.6.0.dmg`（SHA-256 `172b06932154a2a8817a3b38fadb3ee86d61aa4fa13e4b2cf0315eb101fa3ae7`）完成 Developer ID 签名、公证 `Accepted`（提交号 `b3069d60-9f12-45ce-ae15-81a046cd2e2a`）与票据装订；包内 App 为 Universal arm64/x86_64，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 已发布 build 7，并生成到 build 3/4/5/6 的增量包；Cloudflare Pages 生产部署 `75101a9a-b0db-4968-a351-c4508b5dd34d` 已上线。生产首页、发布说明、appcast、DMG 缓存头、线上/本地哈希和下载包完整性均已验证；本机 `/Applications/ForNow.app` 已更新并启动。TXT 内容重复识别仍列为已知问题。
