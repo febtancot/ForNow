@@ -55,6 +55,7 @@ public final class StashStore: ObservableObject {
         purgeExpiredTrash()
         if pinLockedItemsToTop() { persist() }
         backfillContentHashes()
+        reconcileLegacyTextDropsMatchingTXTFiles()
     }
 
     /// 为缺少内容哈希的历史项目补算哈希并持久化（一次性迁移），
@@ -237,7 +238,56 @@ public final class StashStore: ObservableObject {
         items.insert(contentsOf: toAdd, at: 0)
         pinLockedItemsToTop()
         persist()
+        if newItems.contains(where: Self.isTXTFile) {
+            reconcileLegacyTextDropsMatchingTXTFiles()
+        }
         return duplicates
+    }
+
+    /// 旧拖放路径曾把 Finder `.txt` 错误保存成文字项。只要当前已有对应 TXT 文件项，
+    /// 就把内容完全相同、且未锁定的旧文字项移入应用内回收站。数据仍可恢复；锁定项不动。
+    /// 每次加载执行一次，并在新 TXT（含文件重复项）进入哈希链路时立即执行。
+    @discardableResult
+    private func reconcileLegacyTextDropsMatchingTXTFiles() -> Int {
+        let txtContents = Set(items.compactMap { item -> String? in
+            guard Self.isTXTFile(item), let url = absoluteURL(for: item) else { return nil }
+            return Self.normalizedTXTContents(at: url)
+        })
+        guard !txtContents.isEmpty else { return 0 }
+
+        let duplicateIDs = Set(items.compactMap { item -> UUID? in
+            guard item.kind == .text, !item.locked, let text = item.text,
+                  txtContents.contains(Self.normalizedText(text)) else { return nil }
+            return item.id
+        })
+        return remove(ids: duplicateIDs)
+    }
+
+    private static func isTXTFile(_ item: StashItem) -> Bool {
+        guard item.kind == .file else { return false }
+        return (item.originalFileName as NSString?)?.pathExtension.lowercased() == "txt"
+    }
+
+    private static func normalizedTXTContents(at url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let text: String?
+        if data.starts(with: [0xff, 0xfe]) {
+            text = String(data: data, encoding: .utf16LittleEndian)
+        } else if data.starts(with: [0xfe, 0xff]) {
+            text = String(data: data, encoding: .utf16BigEndian)
+        } else {
+            text = String(data: data, encoding: .utf8)
+        }
+        guard let text else { return nil }
+        return normalizedText(text)
+    }
+
+    private static func normalizedText(_ text: String) -> String {
+        var result = text
+        if result.first == "\u{feff}" { result.removeFirst() }
+        return result
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
     }
 
     // MARK: - 回收站（锁定项被跳过，需先解锁）

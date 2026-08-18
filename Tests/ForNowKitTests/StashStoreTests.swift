@@ -505,6 +505,50 @@ final class StashStoreTests: XCTestCase {
         XCTAssertTrue(reloaded.items.contains { $0.displayName == "keep.txt" })
     }
 
+    func testLoadMovesLegacyTextDropsMatchingTXTFileToTrash() throws {
+        let store = makeStore()
+        let file = try makeSourceFile(named: "legacy-drop.txt", contents: "same\r\ncontent")
+        store.addFiles(at: [file])
+        store.addText("same\ncontent")
+        store.addText("same\ncontent")
+
+        let reloaded = makeStore()
+        reloaded.load()
+
+        XCTAssertEqual(reloaded.items.filter { $0.kind == .file }.count, 1)
+        XCTAssertFalse(reloaded.items.contains { $0.kind == .text })
+        XCTAssertEqual(reloaded.trashItems.filter { $0.item.kind == .text }.count, 2)
+    }
+
+    func testDuplicateTXTDropImmediatelyReconcilesLegacyTextItems() throws {
+        let store = makeStore()
+        let file = try makeSourceFile(named: "repeat.txt", contents: "same content")
+        store.addFiles(at: [file])
+        store.addText("same content")
+        store.addText("same content")
+
+        let result = store.addFiles(at: [file])
+
+        XCTAssertEqual(result.duplicates.count, 1)
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.items.first?.kind, .file)
+        XCTAssertEqual(store.trashItems.filter { $0.item.kind == .text }.count, 2)
+    }
+
+    func testLegacyTXTReconciliationKeepsLockedText() throws {
+        let store = makeStore()
+        let file = try makeSourceFile(named: "locked.txt", contents: "protected text")
+        store.addFiles(at: [file])
+        let text = store.addText("protected text")
+        store.setLocked(true, for: [text.id])
+
+        let reloaded = makeStore()
+        reloaded.load()
+
+        XCTAssertTrue(reloaded.items.contains { $0.id == text.id && $0.locked })
+        XCTAssertTrue(reloaded.trashItems.isEmpty)
+    }
+
     // MARK: helpers
 
     private func makeSourceFile(named name: String, contents: String, subfolder: String? = nil) throws -> URL {
