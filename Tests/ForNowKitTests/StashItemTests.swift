@@ -25,10 +25,32 @@ final class StashItemTests: XCTestCase {
     }
 
     func testCodableRoundTrip() throws {
-        let item = StashItem.makeText("hello\nworld")
+        var item = StashItem.makeText("hello\nworld")
+        item.note = "稍后发送给设计师"
         let data = try JSONEncoder().encode(item)
         let decoded = try JSONDecoder().decode(StashItem.self, from: data)
         XCTAssertEqual(item, decoded)
+    }
+
+    func testNoteNormalizationAndPreview() {
+        XCTAssertNil(StashItem.normalizedNote(" \n "))
+        XCTAssertEqual(StashItem.normalizedNote("  第一行\n第二行  "), "第一行\n第二行")
+        XCTAssertEqual(StashItem.normalizedNote(String(repeating: "备", count: 501))?.count, 500)
+
+        let item = StashItem(kind: .file,
+                             displayName: "brief.pdf",
+                             note: "客户 最终版\n周五发送")
+        XCTAssertEqual(item.notePreview, "客户 最终版 周五发送")
+    }
+
+    func testLegacyMetadataWithoutNoteDecodesAsNil() throws {
+        let original = StashItem.makeText("旧内容")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+        json.removeValue(forKey: "note")
+
+        let decoded = try JSONDecoder().decode(StashItem.self,
+                                               from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(decoded.note)
     }
 
     func testDisplayHelpers() {

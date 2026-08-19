@@ -10,6 +10,7 @@ struct StashItemRow: View {
     @EnvironmentObject private var audioPlayer: AudioPlaybackController
     @State private var hovering = false
     @State private var lastClickAt: Date?
+    @State private var isEditingNote = false
 
     private var isSelected: Bool { controller.isSelected(item.id) }
     private var isAudioActive: Bool { item.kind == .audio && audioPlayer.isActive(item.id) }
@@ -35,6 +36,12 @@ struct StashItemRow: View {
                 Text(item.displayName)
                     .lineLimit(1)
                     .font(.system(size: 12, weight: .medium))
+                if let note = item.notePreview {
+                    Label(note, systemImage: "note.text")
+                        .lineLimit(1)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.primary.opacity(0.78))
+                }
                 if isAudioActive {
                     activeAudioProgress
                 } else {
@@ -92,8 +99,14 @@ struct StashItemRow: View {
         }
         .onDrag { ItemActions.dragProvider(item, store: store) }
         .contextMenu { contextMenu }
+        .sheet(isPresented: $isEditingNote) {
+            StashNoteEditor(itemName: item.displayName,
+                            initialNote: item.note ?? "") { note in
+                store.setNote(note, for: item.id)
+            }
+        }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(kindLabel)，\(item.displayName)\(isSelected ? "，已选中" : "")\(item.locked ? "，已锁定" : "")")
+        .accessibilityLabel("\(kindLabel)，\(item.displayName)\(item.notePreview.map { "，备注：\($0)" } ?? "")\(isSelected ? "，已选中" : "")\(item.locked ? "，已锁定" : "")")
         .accessibilityAction(named: Text(primaryActionTitle)) { performPrimaryAction() }
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
@@ -113,6 +126,11 @@ struct StashItemRow: View {
             } else {
                 Label(targets.count > 1 ? "锁定 \(targets.count) 项" : "锁定", systemImage: "lock")
             }
+        }
+        Button {
+            isEditingNote = true
+        } label: {
+            Label(noteMenuTitle(targetCount: targets.count), systemImage: "note.text")
         }
         if item.kind == .text {
             Button { controller.previewText(item) } label: {
@@ -246,6 +264,13 @@ struct StashItemRow: View {
         }
     }
 
+    private func noteMenuTitle(targetCount: Int) -> String {
+        if targetCount > 1 {
+            return item.note == nil ? "为此项目添加备注" : "编辑此项目备注"
+        }
+        return item.note == nil ? "添加备注" : "编辑备注"
+    }
+
     private func performThumbnailAction() {
         switch item.kind {
         case .audio:
@@ -283,6 +308,66 @@ struct StashItemRow: View {
         }
         parts.append(item.createdAt.formatted(date: .abbreviated, time: .shortened))
         return parts.joined(separator: " · ")
+    }
+}
+
+/// 单个暂存项目的本地备注编辑器。保存空白内容等同于移除备注。
+private struct StashNoteEditor: View {
+    let itemName: String
+    let initialNote: String
+    let onSave: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var note: String
+
+    init(itemName: String, initialNote: String, onSave: @escaping (String) -> Void) {
+        self.itemName = itemName
+        self.initialNote = initialNote
+        self.onSave = onSave
+        _note = State(initialValue: initialNote)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(initialNote.isEmpty ? "添加备注" : "编辑备注")
+                    .font(.headline)
+                Text(itemName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            TextEditor(text: $note)
+                .font(.body)
+                .padding(6)
+                .scrollContentBackground(.hidden)
+                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                }
+                .onChange(of: note) {
+                    if note.count > 500 { note = String(note.prefix(500)) }
+                }
+                .accessibilityLabel("备注内容")
+
+            HStack {
+                Text("\(note.count) / 500")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("取消") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("保存") {
+                    onSave(note)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 420, height: 250)
     }
 }
 

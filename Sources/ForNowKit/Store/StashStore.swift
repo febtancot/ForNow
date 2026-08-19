@@ -396,6 +396,19 @@ public final class StashStore: ObservableObject {
         persist()
     }
 
+    // MARK: - 备注
+
+    /// 更新单个暂存项目的备注并立即持久化；传入空白内容会移除备注。
+    @discardableResult
+    public func setNote(_ note: String?, for id: UUID) -> Bool {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return false }
+        let normalized = StashItem.normalizedNote(note)
+        guard items[index].note != normalized else { return true }
+        items[index].note = normalized
+        persist()
+        return true
+    }
+
     // MARK: - 私有
 
     private func persist() {

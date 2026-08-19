@@ -53,6 +53,29 @@ final class StashStoreTests: XCTestCase {
         XCTAssertEqual(b.displayName, "only.host")
     }
 
+    func testNotePersistsAndBlankContentRemovesIt() {
+        let store = makeStore()
+        let item = store.addText("需要辨认的内容")
+
+        XCTAssertTrue(store.setNote("  发给 Alice\n确认附件  ", for: item.id))
+        XCTAssertEqual(store.items.first?.note, "发给 Alice\n确认附件")
+
+        let reloaded = makeStore()
+        reloaded.load()
+        XCTAssertEqual(reloaded.items.first?.note, "发给 Alice\n确认附件")
+
+        XCTAssertTrue(reloaded.setNote(" \n ", for: item.id))
+        XCTAssertNil(reloaded.items.first?.note)
+
+        let reloadedAgain = makeStore()
+        reloadedAgain.load()
+        XCTAssertNil(reloadedAgain.items.first?.note)
+    }
+
+    func testSetNoteReturnsFalseForMissingItem() {
+        XCTAssertFalse(makeStore().setNote("不会保存", for: UUID()))
+    }
+
     // MARK: 文件
 
     func testBatchInsertPreservesOrder() throws {
@@ -274,6 +297,7 @@ final class StashStoreTests: XCTestCase {
         let store = makeStore(now: { now })
         let file = try makeSourceFile(named: "recover.txt", contents: "recoverable")
         let item = try XCTUnwrap(store.addFiles(at: [file]).added.first)
+        store.setNote("恢复后仍要保留", for: item.id)
         let managedURL = try XCTUnwrap(store.absoluteURL(for: item))
         store.remove(item)
 
@@ -287,6 +311,7 @@ final class StashStoreTests: XCTestCase {
         XCTAssertTrue(result.duplicates.isEmpty)
         XCTAssertTrue(result.missingFiles.isEmpty)
         XCTAssertEqual(reloaded.items.map(\.id), [item.id])
+        XCTAssertEqual(reloaded.items.first?.note, "恢复后仍要保留")
         XCTAssertTrue(reloaded.trashItems.isEmpty)
         XCTAssertTrue(FileManager.default.fileExists(atPath: managedURL.path))
 

@@ -12,6 +12,8 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
     public var createdAt: Date
     /// 锁定项不被「清空」与删除操作移除（需先解锁）。
     public var locked: Bool
+    /// 用户为辨认暂存内容添加的本地备注；空白内容按无备注处理。
+    public var note: String?
 
     // MARK: 文件 / 图片
     /// 相对 `FileStorage.rootDirectory` 的路径，形如 `<uuid>/<原文件名>`。
@@ -41,6 +43,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
                 displayName: String,
                 createdAt: Date = Date(),
                 locked: Bool = false,
+                note: String? = nil,
                 relativePath: String? = nil,
                 byteSize: Int64? = nil,
                 originalFileName: String? = nil,
@@ -56,6 +59,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
         self.displayName = displayName
         self.createdAt = createdAt
         self.locked = locked
+        self.note = Self.normalizedNote(note)
         self.relativePath = relativePath
         self.byteSize = byteSize
         self.originalFileName = originalFileName
@@ -68,7 +72,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
         self.durationSeconds = durationSeconds
     }
 
-    /// 手写解码以兼容旧元数据：缺少 `locked`/`durationSeconds` 键时回退默认值，
+    /// 手写解码以兼容旧元数据：缺少 `locked`/`note`/`durationSeconds` 键时回退默认值，
     /// 而不是整份元数据解码失败。
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -77,6 +81,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
         displayName = try container.decode(String.self, forKey: .displayName)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         locked = try container.decodeIfPresent(Bool.self, forKey: .locked) ?? false
+        note = Self.normalizedNote(try container.decodeIfPresent(String.self, forKey: .note))
         relativePath = try container.decodeIfPresent(String.self, forKey: .relativePath)
         byteSize = try container.decodeIfPresent(Int64.self, forKey: .byteSize)
         originalFileName = try container.decodeIfPresent(String.self, forKey: .originalFileName)
@@ -90,7 +95,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, displayName, createdAt, locked
+        case id, kind, displayName, createdAt, locked, note
         case relativePath, byteSize, originalFileName, contentHash
         case pixelWidth, pixelHeight, text
         case urlString, linkTitle, durationSeconds
@@ -100,6 +105,13 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
 // MARK: - 工厂方法
 
 public extension StashItem {
+    /// 备注最多保留 500 个字符；首尾空白会移除，纯空白视为未设置。
+    static func normalizedNote(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(500))
+    }
+
     static func makeText(_ raw: String, createdAt: Date = Date(), id: UUID = UUID()) -> StashItem {
         StashItem(id: id, kind: .text, displayName: summary(from: raw), createdAt: createdAt, text: raw)
     }
@@ -172,6 +184,12 @@ public extension StashItem {
 // MARK: - 展示辅助
 
 public extension StashItem {
+    /// 列表单行展示用备注：将多行和连续空白压成一个空格。
+    var notePreview: String? {
+        guard let note else { return nil }
+        return note.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
     /// 图片尺寸文案，如 "1920 × 1080"。
     var pixelSizeText: String? {
         guard let w = pixelWidth, let h = pixelHeight else { return nil }

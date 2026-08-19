@@ -42,6 +42,7 @@
 | 删除/清空 | ✅ | Delete、右键与底部「清空」均把未锁定项目移入应用内回收站；清空前二次确认，锁定项跳过 |
 | 回收站 | ✅ | 面板头部可切换回收站；显示过去 30 天清除的文件/图片/文字/链接/录音及清除时间，支持单项或全部恢复；到期自动永久删除；恢复时拦截重复内容和底层文件缺失 |
 | 锁定 | ✅ | 右键「锁定/解锁」（多选时批量）；锁定行显示锁图标并永远稳定置顶，不受清空/删除影响；新增、恢复与重启加载均保持锁定分区；旧元数据无 `locked` 键自动按未锁定加载（有单测）|
+| 暂存备注 | ✅ | 右键单个项目可添加或编辑最多 500 字的本地备注；备注在文件名下方单独显示，空白保存会移除备注；随元数据持久化，进入回收站并恢复后仍保留，旧元数据无 `note` 键时按无备注加载 |
 | 打开/预览 | ✅ | 双击打开文件/图片/链接；双击文字弹出原文预览窗；文件夹图标悬停直接打开，文件/图片图标悬停直接快速预览（QLPreviewPanel），右键入口保留 |
 | 列表图标 | ✅ | 文件/文件夹用真实 Finder 图标；图片缩略图；文字/链接用符号；音频/文件夹/文件/图片在悬停时叠加对应快捷操作 |
 | 本地持久化 | ✅ | 文件复制进 `~/Library/Application Support/ForNow/Files/<uuid>/原名`，元数据 JSON；重启仍在 |
@@ -67,6 +68,7 @@
 - **图标与悬停快捷操作**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。鼠标进入行后，音频图标叠加播放/暂停、文件夹图标叠加打开、普通文件和图片图标叠加快速预览；按钮直接覆盖在 34×34 图标命中区，不再占用行尾空间。音频活动期间按钮保持可见，便于随时暂停；VoiceOver 行操作仍提供等价的播放、打开或预览动作。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
 - **锁定**：右键行 →「锁定」（多选时批量，已全锁则显示「解锁」）；锁定行尾显示锁图标、悬停删除按钮隐藏；`StashStore` 对活动列表做稳定分区，锁定项始终位于顶部，锁定/解锁、新项目插入、回收站恢复与历史元数据加载都会重新保证顺序，同时保留各分区内相对次序；「清空」与 Delete/右键删除都跳过锁定项，需先解锁才能删除。
+- **暂存备注**：右键单个项目 →「添加备注/编辑备注」，在独立编辑器中输入最多 500 字；保存时移除首尾空白，纯空白按删除备注处理。列表把多行备注压成单行，放在项目名称与类型/大小/日期之间，VoiceOver 行描述同步读出备注。`StashItem.note` 与其他元数据一起写入 `metadata.json`，移入 `trash.json` 和恢复时保持不变；旧元数据缺少 `note` 时按无备注加载。
 - **全选位置**：全选/取消全选从头部移到面板左下角的操作栏，位于快捷文本输入区正上方；`⌘A` 保持可用。
 - **回收站**：Delete、行尾删除、右键「移到回收站」和底部「清空」只迁移元数据，不立即删除受管文件；回收站由独立 `trash.json` 保存 `TrashedItem(item, trashedAt)`，面板头部垃圾桶入口显示数量，列表显示类型与清除时间，支持行尾/右键单项恢复和底部「全部恢复」。项目保留满 30 天后，在启动加载或打开回收站时永久删除真实文件。恢复保持原 id、创建时间和文件路径并插到暂存顶部；若当前暂存已有相同内容或文件已经缺失，则保留在回收站并提示。跨 `metadata.json`/`trash.json` 写入采用数据安全顺序，启动时以活动列表为准归并同 id，避免中断写入导致恢复文件被到期清理。
 - **录音（分段胶囊 mic 段 + 面板头部常驻 mic）**：收起态胶囊条左侧 mic 段点击开始（首次弹麦克风权限）、再点停止入库，录音中变红并显示实时时长；右侧托盘段（及窗口其余区域）点击打开面板；展开面板头部标题旁同样常驻 mic（空闲 mic 图标、录音中红色「录音中 m:ss」），两态都能开始/停止；不足 0.5 秒视为误触丢弃；音频存 m4a（`AVAudioRecorder`，AAC 44.1kHz 单声道），文件名「录音-时间戳.m4a」、列表显示「录音 · 时刻」；**停止入库后面板自动展开、高亮新录音并把列表滚到顶部**（`scrollToTopRequest`）；音频行副标题显示时长（`durationText`）。实时计时由 `RecordingController.elapsedSeconds` 发布（0.5s 计时器随录音启停、cleanup 复位）；时长文案统一走 `StashItem.durationText(seconds:)`（m:ss 格式）。**胶囊条与头部 mic 按钮直接观察 `recorder`**（`@EnvironmentObject`），录音状态/计时变化只重绘这两处，不触发面板整体重渲染；收起窗口下沿热区高 26pt（`NotchMetrics.closedFrame(interactiveBelow:)`），胶囊完整落在菜单栏/刘海带下方不被遮挡。
@@ -81,7 +83,7 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：95 个单测，无需 app host。
+- `ForNowKitTests`：107 个单测，无需 app host。
 - 关键文件：`NotchController`（多屏窗口/开合/宽度调整/拖入/粘贴/选择/反馈/录音与播放协调）、`DropFileURLLoader`/`DropFileURLDecoder`（拖放文件 URL 优先读取与原始表示解码）、`DisplayIdentity`（ColorSync 显示器 UUID）、`DisplayAttachmentSelection`（自动选择、多选和断开回退纯逻辑）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（含菜单栏下吸附线的几何）、`AppSettings`（持久化面板宽度与屏幕选择）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
@@ -172,3 +174,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-19 · 设置页 DayDrop 介绍**：设置新增 DayDrop 介绍，说明按日期整理下载内容的产品定位、药丸打开今日文件夹和 DayDrop 下载文件或整理记录添加到 ForNow 的前置条件，并提供可点击、可复制的官网 `https://daydrop.liveby.app`。官网地址由 `DayDropIntegrationContract.homepageURL` 统一提供。
 - **2026-08-19 · DayDrop 条目右键反向联动**：新增外部文件接收能力版本与 `ExternalFileImportContract`；For Now 可从系统 open-document 事件接收 DayDrop 今日下载、下载文件或整理记录对应的现有文件，过滤非文件 URL，并复用现有复制/去重/持久化路径，随后展开面板反馈结果。实际 DayDrop 右键菜单、跨 App 文件交付和重启持久化仍需安装兼容的 DayDrop 与 For Now 后真机验收。
 - **2026-08-19 · v0.7.0 DayDrop 联动版本发布**：版本升至 0.7.0（build 8），发布主题为 DayDrop 双向联动、设置内独立介绍与官网访问入口。`dist/ForNow-0.7.0.dmg`（SHA-256 `e27485cd1a8654c4d5ccb5b9f5fe143cf32c1dd3a664924b09dcfe6e90548e0a`）完成 Developer ID 签名、Apple 公证 `Accepted`（提交号 `1e89c8b2-59ce-4ebc-b5fb-8d03d2b12fcb`）与票据装订；包内 App 为 Universal arm64/x86_64，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 已发布 build 8，并生成到 build 3/4/5/6/7 的增量包；Cloudflare Pages 最终生产部署 `2d079d8f-6b53-4ab6-b34e-f52c827e675a` 已上线。生产首页、0.7.0 发布说明、appcast、DMG 缓存头、线上/本地哈希和下载包完整性均已验证；官网新增 DayDrop 独立区块与 `https://daydrop.liveby.app/` 访问入口，并通过 `styles.css?revision=0.7.0` 修复首次部署时旧 CSS 缓存导致的新卡片样式缺失。正式 DMG 已安装到 `/Applications/ForNow.app`，旧版备份到 `~/Library/Application Support/ForNow Installer Backups/ForNow-before-0.7.0-release-20260819-142351.app`；真实药丸显示 DayDrop 文件夹按钮，点击后 Finder 打开 `Day 2026-08-19`。DayDrop 条目右键到 ForNow 的完整 UI 交付仍未在本轮自动化中直接执行；TXT 内容重复识别继续列为已知问题。
+- **2026-08-20 · 暂存备注**：`StashItem` 新增可选 `note` 元数据，旧 JSON 缺失字段时兼容加载；`StashStore.setNote` 统一处理 500 字上限、首尾空白和空备注移除，并立即写盘。项目右键菜单新增「添加备注/编辑备注」，编辑器提供字数计数，列表在名称下方显示单行备注，VoiceOver 描述同步包含备注；备注随回收站迁移和恢复保留。新增 4 项模型与仓库测试，完整 107 单测通过；Debug 版已实际验证右键、输入、保存、列表展示、编辑和移除，视觉密度仍可按使用反馈微调。
