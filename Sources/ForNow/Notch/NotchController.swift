@@ -24,6 +24,8 @@ final class NotchController: ObservableObject {
     @Published var scrollTargetItemID: UUID?
     /// 当前展开面板宽度；由左右边缘拖动实时更新。
     @Published private(set) var panelWidth: CGFloat
+    /// 仅当系统确认 DayDrop 已安装且能够处理正式联动入口时为 true。
+    @Published private(set) var canOpenDayDropTodayFolder = false
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
@@ -86,8 +88,54 @@ final class NotchController: ObservableObject {
             .sink { [weak self] _ in self?.refreshAttachedWindows() }
             .store(in: &cancellables)
 
+        // DayDrop 启动或退出后刷新入口；胶囊视图出现时还会再主动刷新一次，
+        // 覆盖 ForNow 长驻期间发生的安装或升级。
+        for notificationName in [
+            NSWorkspace.didLaunchApplicationNotification,
+            NSWorkspace.didTerminateApplicationNotification
+        ] {
+            NSWorkspace.shared.notificationCenter.publisher(for: notificationName)
+                .sink { [weak self] _ in self?.refreshDayDropAvailability() }
+                .store(in: &cancellables)
+        }
+
         refreshAttachedWindows()
+        refreshDayDropAvailability()
         panelWidth = clampedPanelWidth(panelWidth)
+    }
+
+    // MARK: - DayDrop 联动
+
+    func refreshDayDropAvailability() {
+        let workspace = NSWorkspace.shared
+        let installedApplicationURL = workspace.urlForApplication(
+            withBundleIdentifier: DayDropIntegrationContract.bundleIdentifier
+        )
+        let schemeHandlerURL = workspace.urlForApplication(
+            toOpen: DayDropIntegrationContract.openTodayFolderURL
+        )
+        let schemeHandlerBundleIdentifier = schemeHandlerURL
+            .flatMap { Bundle(url: $0)?.bundleIdentifier }
+
+        canOpenDayDropTodayFolder = DayDropIntegrationContract.canOpenTodayFolder(
+            installedApplicationURL: installedApplicationURL,
+            schemeHandlerApplicationURL: schemeHandlerURL,
+            schemeHandlerBundleIdentifier: schemeHandlerBundleIdentifier
+        )
+    }
+
+    func openDayDropTodayFolder() {
+        refreshDayDropAvailability()
+        guard canOpenDayDropTodayFolder else {
+            NSSound.beep()
+            return
+        }
+
+        guard NSWorkspace.shared.open(DayDropIntegrationContract.openTodayFolderURL) else {
+            canOpenDayDropTodayFolder = false
+            NSSound.beep()
+            return
+        }
     }
 
     // MARK: - 开合

@@ -51,6 +51,7 @@
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
 | 多屏吸附 | ✅ | 默认仍在刘海下；设置列出当前显示器（含左右/上下位置），可单选或多选。每块已选屏幕各有一个收起态小药丸，点击哪块就只在哪块展开；外接/无刘海屏吸附在菜单栏下方中央。显示器 UUID 跨重启保存，断开时临时回退默认屏，重连自动恢复 |
+| DayDrop 联动 | ✅ | 系统确认 `com.liuyuhang.DayDrop` 已安装，且同一个安装副本处理正式 URL 入口时，收起态分段胶囊增加文件夹按钮；点击 `daydrop://open-today-folder`，由 DayDrop 自己准备并打开今日下载文件夹。旧版、未安装、入口被其他应用或另一份开发构建接管时不显示；ForNow 不读取 DayDrop 沙盒数据或推导归档路径 |
 | 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查；菜单栏与设置「更新」页有「查看更新日志」（直达官网 `#update` 锚点）|
 
 ## 交互模型（关键细节）
@@ -59,6 +60,7 @@
 - **首次点击**：面板用 `NotchHostingView` 重写 `acceptsFirstMouse` 返回 true，应用未激活时首击也生效。
 - **展开面板宽度**：默认 384pt。展开后左右边缘各有 10pt 透明拖拽命中区，悬停显示细线并切换横向缩放光标；面板始终以刘海为中心，边缘移动 1pt 对应总宽度变化 2pt。拖动区由 AppKit `NSView` 原生接收 `mouseDown`、`mouseDragged` 和 `mouseUp`，以首次按下时的宽度和屏幕绝对 X 坐标为固定基准；即使宿主窗口在缩放中持续移动，也不会像 SwiftUI `DragGesture` 那样中断、重建或重新起算。全局范围为 320–720pt，实际还会按当前屏幕宽度及 `刘海宽度 + 96pt` 安全下限动态限制。拖拽结束（或拖拽中收起）通过 `AppSettings.panelWidth` 写入 UserDefaults，重启继续使用；设置「面板」显示当前宽度并可恢复默认 384pt，已展开面板会立即同步；VoiceOver 可按 32pt 步长增减。
 - **多屏窗口模型**：`NotchController` 按设置为每块目标屏幕维护独立 `NotchWindow`，共享同一份暂存、草稿、录音和播放状态。所有目标屏幕可同时显示收起态小药丸，但任一时刻只允许一块屏幕展开；点击另一块屏幕会把面板切换过去。默认目标优先带刘海的屏幕，其次主屏；全局快捷键和菜单栏入口也遵循这个顺序。无刘海屏使用 `visibleFrame.maxY` 作为吸附线，落在菜单栏下方；屏幕参数变化后立即重建/重定位窗口。
+- **DayDrop 能力发现**：`DayDropIntegrationContract` 固定 bundle id 与 `daydrop://open-today-folder` 契约。`NotchController` 同时检查 Launch Services 中的已安装应用、URL handler 路径和 handler bundle id，只在安装副本本身提供入口时发布可用状态，避免旁边的旧包或 DerivedData 开发构建误触发；应用启动、退出及胶囊重新出现时刷新。打开动作仅发送 URL，目录授权、创建、归属登记和 Finder 打开均留在 DayDrop 内执行。
 - **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、录音在当前行播放/暂停、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标与悬停快捷操作**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。鼠标进入行后，音频图标叠加播放/暂停、文件夹图标叠加打开、普通文件和图片图标叠加快速预览；按钮直接覆盖在 34×34 图标命中区，不再占用行尾空间。音频活动期间按钮保持可见，便于随时暂停；VoiceOver 行操作仍提供等价的播放、打开或预览动作。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
@@ -164,3 +166,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-18 · TXT 拖入判型与去重修复**：修复 Finder `.txt` provider 同时声明文件 URL 与纯文本时，通用 URL 对象读取失败后被降级成文字项、导致相同文档绕过 SHA-256 去重的问题。新增 `DropFileURLLoader`，先读取并解码 `public.file-url` 原始 representation，再回退通用 URL；真实 `.txt` 继续作为文件入库，纯文本拖放仍是文字项。新增 UTF-8 file URL、非法/网页 URL 拒绝和“文件 URL + 纯文本共存”优先级测试，92 单测绿。
 - **2026-08-18 · TXT 历史重复项归并**：真实数据复核确认新版本已生成唯一带哈希的 `response.raw.txt`，但旧版本此前生成的两个同内容文字项仍留在活动列表，造成“仍未去重”的可见结果。`StashStore` 现会在加载及 TXT（包括重复文件）进入哈希链路时，读取 TXT 文本、去 BOM 并统一换行，与历史文字项精确比较；内容相同且未锁定的文字项移入应用内回收站，锁定项保留。新增加载归并、重复 TXT 即时归并和锁定保护测试，95 单测绿。
 - **2026-08-18 · v0.6.0 多显示器版本发布**：版本升至 0.6.0（build 7），发布主题为多显示器小药丸吸附：设置可选择一块或多块屏幕，默认仍在刘海下；外接屏位于菜单栏下方中央，支持断开回退、重连恢复与设置即时生效。`dist/ForNow-0.6.0.dmg`（SHA-256 `172b06932154a2a8817a3b38fadb3ee86d61aa4fa13e4b2cf0315eb101fa3ae7`）完成 Developer ID 签名、公证 `Accepted`（提交号 `b3069d60-9f12-45ce-ae15-81a046cd2e2a`）与票据装订；包内 App 为 Universal arm64/x86_64，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 已发布 build 7，并生成到 build 3/4/5/6 的增量包；Cloudflare Pages 生产部署 `75101a9a-b0db-4968-a351-c4508b5dd34d` 已上线。生产首页、发布说明、appcast、DMG 缓存头、线上/本地哈希和下载包完整性均已验证；本机 `/Applications/ForNow.app` 已更新并启动。TXT 内容重复识别仍列为已知问题。
+- **2026-08-19 · DayDrop 今日文件夹联动**：新增 `DayDropIntegrationContract`，仅当 Launch Services 同时发现已安装的 `com.liuyuhang.DayDrop`，且 `daydrop://open-today-folder` handler 的路径与 bundle id 都匹配该安装副本时，在收起态分段胶囊显示文件夹按钮；旁边的 DerivedData 构建不会让旧安装包误显示。点击后由 DayDrop 完成今日目录准备、所有权记录与 Finder 打开；ForNow 不跨沙盒读取配置。新增 5 项契约测试；实际 Launch Services 刷新、药丸布局和 Finder 打开仍需安装包含新入口的 DayDrop 后真机验收。

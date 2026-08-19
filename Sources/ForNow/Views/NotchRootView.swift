@@ -54,8 +54,8 @@ struct ClosedPillView: View {
     }
 }
 
-/// 收起态的胶囊条：左侧 mic（点击录音/停止，录音中显示时长）、右侧托盘图标+计数（点击打开）。
-/// 两个分段都是独立按钮，因此 VoiceOver 可分别触达；窗口其余区域点击同样打开面板。
+/// 收起态的分段胶囊：mic、托盘，以及 DayDrop 可用时的今日文件夹入口。
+/// 每个分段都是独立按钮，因此 VoiceOver 可分别触达；窗口其余区域点击同样打开面板。
 struct ClosedCapsuleBar: View {
     @EnvironmentObject private var controller: NotchController
     @EnvironmentObject private var store: StashStore
@@ -67,14 +67,23 @@ struct ClosedCapsuleBar: View {
     var body: some View {
         HStack(spacing: 0) {
             micSegment
-            Rectangle()
-                .fill(Color.white.opacity(0.2))
-                .frame(width: 1, height: 12)
+            segmentDivider
             traySegment
+            if controller.canOpenDayDropTodayFolder {
+                segmentDivider
+                dayDropSegment
+            }
         }
         .foregroundStyle(.white)
         .background(Capsule().fill(Color.black.opacity(hovering ? 0.92 : 0.7)))
         .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+        .onAppear { controller.refreshDayDropAvailability() }
+    }
+
+    private var segmentDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.2))
+            .frame(width: 1, height: 12)
     }
 
     private var micSegment: some View {
@@ -114,5 +123,18 @@ struct ClosedCapsuleBar: View {
         .help("打开暂存面板")
         .accessibilityLabel("搁这儿，\(store.count) 个暂存项目")
         .accessibilityHint("打开暂存面板")
+    }
+
+    private var dayDropSegment: some View {
+        Button { controller.openDayDropTodayFolder() } label: {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .help("使用 DayDrop 打开今日文件夹")
+        .accessibilityLabel("DayDrop 今日文件夹")
+        .accessibilityHint("打开今天的下载归档文件夹")
     }
 }
