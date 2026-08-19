@@ -7,6 +7,7 @@ import Foundation
 public enum DayDropIntegrationContract {
     public static let bundleIdentifier = "com.liuyuhang.DayDrop"
     public static let openTodayFolderURL = URL(string: "daydrop://open-today-folder")!
+    public static let homepageURL = URL(string: "https://daydrop.liveby.app")!
 
     /// 同时确认 DayDrop 已被 Launch Services 发现，且 URL Scheme 没有被其他应用接管。
     public static func canOpenTodayFolder(

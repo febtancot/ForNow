@@ -51,7 +51,7 @@
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
 | 多屏吸附 | ✅ | 默认仍在刘海下；设置列出当前显示器（含左右/上下位置），可单选或多选。每块已选屏幕各有一个收起态小药丸，点击哪块就只在哪块展开；外接/无刘海屏吸附在菜单栏下方中央。显示器 UUID 跨重启保存，断开时临时回退默认屏，重连自动恢复 |
-| DayDrop 联动 | ✅ | 系统确认 `com.liuyuhang.DayDrop` 已安装，且同一个安装副本处理正式 URL 入口时，收起态分段胶囊增加文件夹按钮；点击 `daydrop://open-today-folder`，由 DayDrop 自己准备并打开今日下载文件夹。旧版、未安装、入口被其他应用或另一份开发构建接管时不显示；ForNow 不读取 DayDrop 沙盒数据或推导归档路径 |
+| DayDrop 联动 | ✅ | 设置提供独立 DayDrop 介绍页、双向扩展说明及官网 `https://daydrop.liveby.app`；系统确认 `com.liuyuhang.DayDrop` 已安装，且同一个安装副本处理正式 URL 入口时，收起态分段胶囊增加文件夹按钮；点击 `daydrop://open-today-folder`，由 DayDrop 自己准备并打开今日下载文件夹。旧版、未安装、入口被其他应用或另一份开发构建接管时不显示；ForNow 不读取 DayDrop 沙盒数据或推导归档路径 |
 | 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查；菜单栏与设置「更新」页有「查看更新日志」（直达官网 `#update` 锚点）|
 
 ## 交互模型（关键细节）
@@ -167,3 +167,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-18 · TXT 历史重复项归并**：真实数据复核确认新版本已生成唯一带哈希的 `response.raw.txt`，但旧版本此前生成的两个同内容文字项仍留在活动列表，造成“仍未去重”的可见结果。`StashStore` 现会在加载及 TXT（包括重复文件）进入哈希链路时，读取 TXT 文本、去 BOM 并统一换行，与历史文字项精确比较；内容相同且未锁定的文字项移入应用内回收站，锁定项保留。新增加载归并、重复 TXT 即时归并和锁定保护测试，95 单测绿。
 - **2026-08-18 · v0.6.0 多显示器版本发布**：版本升至 0.6.0（build 7），发布主题为多显示器小药丸吸附：设置可选择一块或多块屏幕，默认仍在刘海下；外接屏位于菜单栏下方中央，支持断开回退、重连恢复与设置即时生效。`dist/ForNow-0.6.0.dmg`（SHA-256 `172b06932154a2a8817a3b38fadb3ee86d61aa4fa13e4b2cf0315eb101fa3ae7`）完成 Developer ID 签名、公证 `Accepted`（提交号 `b3069d60-9f12-45ce-ae15-81a046cd2e2a`）与票据装订；包内 App 为 Universal arm64/x86_64，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 已发布 build 7，并生成到 build 3/4/5/6 的增量包；Cloudflare Pages 生产部署 `75101a9a-b0db-4968-a351-c4508b5dd34d` 已上线。生产首页、发布说明、appcast、DMG 缓存头、线上/本地哈希和下载包完整性均已验证；本机 `/Applications/ForNow.app` 已更新并启动。TXT 内容重复识别仍列为已知问题。
 - **2026-08-19 · DayDrop 今日文件夹联动**：新增 `DayDropIntegrationContract`，仅当 Launch Services 同时发现已安装的 `com.liuyuhang.DayDrop`，且 `daydrop://open-today-folder` handler 的路径与 bundle id 都匹配该安装副本时，在收起态分段胶囊显示文件夹按钮；旁边的 DerivedData 构建不会让旧安装包误显示。点击后由 DayDrop 完成今日目录准备、所有权记录与 Finder 打开；ForNow 不跨沙盒读取配置。新增 5 项契约测试；实际 Launch Services 刷新、药丸布局和 Finder 打开仍需安装包含新入口的 DayDrop 后真机验收。
+- **2026-08-19 · 设置页 DayDrop 介绍**：设置新增独立 DayDrop 页，说明按日期整理下载内容的产品定位，分别解释药丸打开今日文件夹、Finder 右键添加到 ForNow 两项双向能力及其前置条件，并提供可点击、可复制的官网 `https://daydrop.liveby.app`。官网地址由 `DayDropIntegrationContract.homepageURL` 统一提供。

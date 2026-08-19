@@ -11,6 +11,8 @@ struct SettingsView: View {
         TabView {
             generalTab
                 .tabItem { Label("通用", systemImage: "gearshape") }
+            dayDropTab
+                .tabItem { Label("DayDrop", systemImage: "folder.badge.gearshape") }
             updateTab
                 .tabItem { Label("更新", systemImage: "arrow.down.circle") }
         }
@@ -97,6 +99,53 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
+    private var dayDropTab: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label {
+                        Text("DayDrop")
+                            .font(.headline)
+                    } icon: {
+                        Image(systemName: "folder.badge.gearshape")
+                            .foregroundStyle(Color.accentColor)
+                    }
+
+                    Text("DayDrop 是 macOS 下载文件整理工具，可按日期归档下载内容，并快速打开当天文件夹。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("与 ForNow 配合使用") {
+                DayDropFeatureRow(
+                    title: "从药丸打开今日文件夹",
+                    description: "检测到兼容版本后，收起态药丸会显示文件夹按钮。点击后由 DayDrop 准备并打开当天归档目录。",
+                    systemImage: "folder.fill"
+                )
+
+                DayDropFeatureRow(
+                    title: "从 Finder 添加到 ForNow",
+                    description: "在 DayDrop 中启用访达扩展后，可从右键菜单把所选文件或文件夹交给 ForNow；复制、去重和保存仍由 ForNow 完成。",
+                    systemImage: "doc.on.doc"
+                )
+            }
+
+            Section("了解与下载") {
+                Link(destination: DayDropIntegrationContract.homepageURL) {
+                    Label("访问 DayDrop 官网", systemImage: "globe")
+                }
+                Text(DayDropIntegrationContract.homepageURL.absoluteString)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
     private var updateTab: some View {
         Form {
             Section("版本") {
@@ -163,6 +212,33 @@ struct SettingsView: View {
 
     private func isOnlyEffectiveDisplay(_ displayID: String) -> Bool {
         effectiveConnectedDisplayIDs == Set([displayID])
+    }
+}
+
+private struct DayDropFeatureRow: View {
+    let title: String
+    let description: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
