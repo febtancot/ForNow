@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notchController: NotchController?
     private let hotKeyManager = HotKeyManager()
     private var cancellables: Set<AnyCancellable> = []
+    private var pendingExternalFileURLs: [URL] = []
 
     /// 由 ForNowApp 的场景内容注入：打开设置窗口（SwiftUI `openSettings` 动作）。
     var onOpenSettings: (() -> Void)?
@@ -39,6 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.notchController = notch
         self.statusController = status
 
+        if !pendingExternalFileURLs.isEmpty {
+            let urls = pendingExternalFileURLs
+            pendingExternalFileURLs.removeAll()
+            importExternalFiles(urls, using: notch)
+        }
+
         // 让设置里的"登录时启动"反映系统真实状态。
         settings.launchAtLogin = LoginItem.isEnabled
 
@@ -58,5 +65,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.objectWillChange
             .sink { [weak self] _ in self?.settingsVersion += 1 }
             .store(in: &cancellables)
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let urls = ExternalFileImportContract.normalizedFileURLs(urls)
+        guard !urls.isEmpty else { return }
+
+        guard let notchController else {
+            pendingExternalFileURLs = ExternalFileImportContract.normalizedFileURLs(
+                pendingExternalFileURLs + urls
+            )
+            return
+        }
+        importExternalFiles(urls, using: notchController)
+    }
+
+    private func importExternalFiles(_ urls: [URL], using notch: NotchController) {
+        let result = store.addFiles(at: urls)
+        let message = ExternalFileImportContract.feedbackMessage(
+            addedCount: result.added.count,
+            duplicateCount: result.duplicates.count,
+            failureCount: result.errors.count
+        )
+
+        if let firstAdded = result.added.first {
+            notch.scrollTargetItemID = firstAdded.id
+            notch.scrollToTopRequest += 1
+        }
+        if !result.duplicates.isEmpty {
+            notch.selection = Set(result.duplicates.map(\.id))
+        }
+        notch.open()
+        notch.feedback(message)
     }
 }

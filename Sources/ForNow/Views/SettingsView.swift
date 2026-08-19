@@ -1,4 +1,5 @@
 import AppKit
+import FinderSync
 import SwiftUI
 import ForNowKit
 
@@ -6,13 +7,14 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var updater: UpdaterModel
     @State private var connectedDisplays = ConnectedDisplay.current()
+    @State private var isFinderExtensionEnabled = FIFinderSyncController.isExtensionEnabled
 
     var body: some View {
         TabView {
             generalTab
                 .tabItem { Label("通用", systemImage: "gearshape") }
-            dayDropTab
-                .tabItem { Label("DayDrop", systemImage: "folder.badge.gearshape") }
+            extensionsTab
+                .tabItem { Label("扩展功能", systemImage: "puzzlepiece.extension") }
             updateTab
                 .tabItem { Label("更新", systemImage: "arrow.down.circle") }
         }
@@ -21,6 +23,11 @@ struct SettingsView: View {
             for: NSApplication.didChangeScreenParametersNotification
         )) { _ in
             connectedDisplays = ConnectedDisplay.current()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification
+        )) { _ in
+            refreshFinderExtensionStatus()
         }
     }
 
@@ -99,9 +106,31 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var dayDropTab: some View {
+    private var extensionsTab: some View {
         Form {
-            Section {
+            Section("Finder 右键暂存") {
+                ExtensionFeatureRow(
+                    title: isFinderExtensionEnabled
+                        ? "Finder 扩展已启用"
+                        : "Finder 扩展尚未启用",
+                    description: "ForNow 已内置此扩展。启用后，可在 Finder 选择文件或文件夹，右键选择「添加到 ForNow」；不需要安装 DayDrop。",
+                    systemImage: isFinderExtensionEnabled
+                        ? "checkmark.circle.fill"
+                        : "puzzlepiece.extension"
+                )
+
+                Button {
+                    FIFinderSyncController.showExtensionManagementInterface()
+                } label: {
+                    Label(
+                        isFinderExtensionEnabled ? "管理 Finder 扩展…" : "启用 Finder 扩展…",
+                        systemImage: "gearshape"
+                    )
+                }
+                .accessibilityHint("打开系统设置中的 Finder 扩展管理页面")
+            }
+
+            Section("DayDrop") {
                 VStack(alignment: .leading, spacing: 8) {
                     Label {
                         Text("DayDrop")
@@ -117,23 +146,21 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 4)
-            }
 
-            Section("与 ForNow 配合使用") {
-                DayDropFeatureRow(
+                ExtensionFeatureRow(
                     title: "从药丸打开今日文件夹",
                     description: "检测到兼容版本后，收起态药丸会显示文件夹按钮。点击后由 DayDrop 准备并打开当天归档目录。",
                     systemImage: "folder.fill"
                 )
 
-                DayDropFeatureRow(
-                    title: "从 Finder 添加到 ForNow",
-                    description: "在 DayDrop 中启用访达扩展后，可从右键菜单把所选文件或文件夹交给 ForNow；复制、去重和保存仍由 ForNow 完成。",
+                ExtensionFeatureRow(
+                    title: "从 DayDrop 记录添加到 ForNow",
+                    description: "在 DayDrop 的下载文件或整理记录中右键现有文件，即可交给 ForNow；复制、去重和保存仍由 ForNow 完成。",
                     systemImage: "doc.on.doc"
                 )
             }
 
-            Section("了解与下载") {
+            Section("了解 DayDrop") {
                 Link(destination: DayDropIntegrationContract.homepageURL) {
                     Label("访问 DayDrop 官网", systemImage: "globe")
                 }
@@ -144,6 +171,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func refreshFinderExtensionStatus() {
+        isFinderExtensionEnabled = FIFinderSyncController.isExtensionEnabled
     }
 
     private var updateTab: some View {
@@ -215,7 +246,7 @@ struct SettingsView: View {
     }
 }
 
-private struct DayDropFeatureRow: View {
+private struct ExtensionFeatureRow: View {
     let title: String
     let description: String
     let systemImage: String
