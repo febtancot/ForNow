@@ -2,7 +2,7 @@
 
 > 文件、文字、链接，先搁这儿。
 
-![Version](https://img.shields.io/badge/version-0.6.0-2563EB)
+![Version](https://img.shields.io/badge/version-0.7.0-2563EB)
 ![macOS](https://img.shields.io/badge/macOS-14%2B-111827)
 [![License: MIT](https://img.shields.io/badge/license-MIT-F5C518)](LICENSE)
 
@@ -37,8 +37,7 @@ Finder、邮件、聊天窗口或上传区域。
 - 点击面板底部的输入区，输入文字或 HTTP(S) URL 后按回车。
 - 点击收起态胶囊左侧或面板标题旁的麦克风按钮，开始或停止录音。
 - 安装支持联动入口的 DayDrop 后，收起态胶囊会自动出现文件夹按钮；点击后由 DayDrop 准备并打开今日下载文件夹。
-- 安装包含 For Now 联动的 DayDrop 后，可在 DayDrop 的 **下载文件**或**整理记录**中右键现有文件，选择 **添加到 For Now**。For Now 会复制项目、复用现有去重规则，并展开面板显示结果。
-- 安装包含 For Now 联动的 DayDrop 后，可在 DayDrop 的 **下载文件**或**整理记录**中右键现有文件，选择 **添加到 For Now**。For Now 会复制项目、复用现有去重规则，并展开面板显示结果。
+- 安装包含搁这儿-ForNow联动的 DayDrop 后，可在 DayDrop 的**今日下载**、**下载文件**或**整理记录**中右键现有文件，选择**添加到搁这儿-ForNow**。搁这儿-ForNow会复制项目、复用现有去重规则，并展开面板显示结果。
 
 文件、图片和音频按内容计算 SHA-256。重复加入相同内容时，应用保留原项目并将其高亮，不再创建副本。
 
@@ -144,9 +143,9 @@ xcodebuild -scheme ForNow \
 ./Scripts/make_dmg.sh
 ```
 
-当前 `ForNowKitTests` 包含 105 个单元测试，不依赖应用宿主。单元测试覆盖数据模型、存储、去重、历史 TXT 文字项归并、回收站、剪贴板与拖放归类、Finder 扩展宿主解析、外部文件接收契约、快捷键模型、音频播放状态、屏幕选择回退、面板几何和 DayDrop 联动契约等纯逻辑。
+当前 `ForNowKitTests` 包含 103 个单元测试，不依赖应用宿主。单元测试覆盖数据模型、存储、去重、历史 TXT 文字项归并、回收站、剪贴板与拖放归类、外部文件接收契约、快捷键模型、音频播放状态、屏幕选择回退、面板几何和 DayDrop 联动契约等纯逻辑。
 
-命令行构建和单元测试不能证明刘海点击、边缘拖动、系统拖放、Finder 扩展启用、Finder 或 DayDrop 右键到面板的跨进程交付、麦克风录音、实际音频输出或 VoiceOver 交互已经通过。发布前仍需在真实 Mac 上完成这些交互检查。
+命令行构建和单元测试不能证明刘海点击、边缘拖动、系统拖放、DayDrop 记录右键到面板的跨 App 交付、麦克风录音、实际音频输出或 VoiceOver 交互已经通过。发布前仍需在真实 Mac 上完成这些交互检查。
 
 ## 项目结构
 

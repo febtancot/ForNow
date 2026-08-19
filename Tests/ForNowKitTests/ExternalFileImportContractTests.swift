@@ -2,27 +2,6 @@ import XCTest
 @testable import ForNowKit
 
 final class ExternalFileImportContractTests: XCTestCase {
-    func testResolvesContainingApplicationFromEmbeddedFinderExtension() {
-        let extensionURL = URL(
-            fileURLWithPath: "/Applications/ForNow.app/Contents/PlugIns/ForNowFinderExtension.appex"
-        )
-
-        XCTAssertEqual(
-            ExternalFileImportContract.containingApplicationURL(
-                forExtensionBundleURL: extensionURL
-            ),
-            URL(fileURLWithPath: "/Applications/ForNow.app")
-        )
-    }
-
-    func testRejectsExtensionOutsideApplicationBundle() {
-        XCTAssertNil(
-            ExternalFileImportContract.containingApplicationURL(
-                forExtensionBundleURL: URL(fileURLWithPath: "/tmp/ForNowFinderExtension.appex")
-            )
-        )
-    }
-
     func testNormalizesUniqueFileURLsWithoutChangingOrder() {
         let first = URL(fileURLWithPath: "/tmp/first.txt")
         let second = URL(fileURLWithPath: "/tmp/second.pdf")

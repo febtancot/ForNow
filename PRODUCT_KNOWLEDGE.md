@@ -51,9 +51,8 @@
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
 | 多屏吸附 | ✅ | 默认仍在刘海下；设置列出当前显示器（含左右/上下位置），可单选或多选。每块已选屏幕各有一个收起态小药丸，点击哪块就只在哪块展开；外接/无刘海屏吸附在菜单栏下方中央。显示器 UUID 跨重启保存，断开时临时回退默认屏，重连自动恢复 |
-| DayDrop 联动 | ✅ | 设置「扩展功能」页提供 DayDrop 介绍、可选联合能力及官网 `https://daydrop.liveby.app`；系统确认 `com.liuyuhang.DayDrop` 已安装，且同一个安装副本处理正式 URL 入口时，收起态分段胶囊增加文件夹按钮；点击 `daydrop://open-today-folder`，由 DayDrop 自己准备并打开今日下载文件夹。旧版、未安装、入口被其他应用或另一份开发构建接管时不显示；ForNow 不读取 DayDrop 沙盒数据或推导归档路径 |
-| Finder 右键暂存 | ✅ | ForNow.app 内嵌自有 Finder Sync 扩展，不依赖 DayDrop。启用后，Finder 所选文件或文件夹显示「添加到 ForNow」；扩展只交付规范化文件 URL，主应用通过能力版本 1 的 open-document 接收端复用 `StashStore.addFiles` 完成复制、SHA-256 去重与持久化，并反馈成功、重复和失败数量 |
-| DayDrop 外部文件接收 | ✅ | 同一 open-document 接收端也接受 DayDrop 下载文件或整理记录传入的现有本机文件 URL；此为可选联合能力，不是 Finder 右键暂存的前置条件 |
+| DayDrop 联动 | ✅ | 设置提供独立 DayDrop 介绍页、双向能力说明及官网 `https://daydrop.liveby.app`；系统确认 `com.liuyuhang.DayDrop` 已安装，且同一个安装副本处理正式 URL 入口时，收起态分段胶囊增加文件夹按钮；点击 `daydrop://open-today-folder`，由 DayDrop 自己准备并打开今日下载文件夹。旧版、未安装、入口被其他应用或另一份开发构建接管时不显示；ForNow 不读取 DayDrop 沙盒数据或推导归档路径 |
+| DayDrop 外部文件接收 | ✅ | 能力版本 1 的 open-document 接收端接受 DayDrop 今日下载、下载文件或整理记录传入的现有本机文件 URL，复用 `StashStore.addFiles` 完成复制、SHA-256 去重与持久化，并以“搁这儿-ForNow”作为界面名称反馈成功、重复和失败数量 |
 | 版本检查/自动更新 | ✅ | Sparkle 2：启动时 + 每日最多一次自动检查，菜单栏「检查更新…」手动触发，设置「更新」页显示版本/上次检查；菜单栏与设置「更新」页有「查看更新日志」（直达官网 `#update` 锚点）|
 
 ## 交互模型（关键细节）
@@ -63,7 +62,7 @@
 - **展开面板宽度**：默认 384pt。展开后左右边缘各有 10pt 透明拖拽命中区，悬停显示细线并切换横向缩放光标；面板始终以刘海为中心，边缘移动 1pt 对应总宽度变化 2pt。拖动区由 AppKit `NSView` 原生接收 `mouseDown`、`mouseDragged` 和 `mouseUp`，以首次按下时的宽度和屏幕绝对 X 坐标为固定基准；即使宿主窗口在缩放中持续移动，也不会像 SwiftUI `DragGesture` 那样中断、重建或重新起算。全局范围为 320–720pt，实际还会按当前屏幕宽度及 `刘海宽度 + 96pt` 安全下限动态限制。拖拽结束（或拖拽中收起）通过 `AppSettings.panelWidth` 写入 UserDefaults，重启继续使用；设置「面板」显示当前宽度并可恢复默认 384pt，已展开面板会立即同步；VoiceOver 可按 32pt 步长增减。
 - **多屏窗口模型**：`NotchController` 按设置为每块目标屏幕维护独立 `NotchWindow`，共享同一份暂存、草稿、录音和播放状态。所有目标屏幕可同时显示收起态小药丸，但任一时刻只允许一块屏幕展开；点击另一块屏幕会把面板切换过去。默认目标优先带刘海的屏幕，其次主屏；全局快捷键和菜单栏入口也遵循这个顺序。无刘海屏使用 `visibleFrame.maxY` 作为吸附线，落在菜单栏下方；屏幕参数变化后立即重建/重定位窗口。
 - **DayDrop 能力发现**：`DayDropIntegrationContract` 固定 bundle id 与 `daydrop://open-today-folder` 契约。`NotchController` 同时检查 Launch Services 中的已安装应用、URL handler 路径和 handler bundle id，只在安装副本本身提供入口时发布可用状态，避免旁边的旧包或 DerivedData 开发构建误触发；应用启动、退出及胶囊重新出现时刷新。打开动作仅发送 URL，目录授权、创建、归属登记和 Finder 打开均留在 DayDrop 内执行。
-- **Finder 扩展与文件接收**：`ForNowFinderExtension.appex` 嵌入 ForNow.app，在 Finder 中提供「添加到 ForNow」菜单；扩展不扫描目录或读取文件内容，通过自身 bundle 路径解析宿主应用并交付所选文件 URL，因此不依赖 DayDrop 或 Launch Services 中的其他应用副本。`ForNowExternalFileImportVersion=1` 是 DayDrop 等其他本机应用可检查的显式能力标记。`AppDelegate.application(_:open:)` 只接收本机文件 URL，在启动尚未完成时合并排队；启动完成后调用现有 `StashStore.addFiles`，不另建存储路径或绕过内容去重。结果通过 Notch 面板显示，重复项会高亮已有项目。
+- **DayDrop 文件接收**：`ForNowExternalFileImportVersion=1` 是 DayDrop 检查的显式能力标记。`AppDelegate.application(_:open:)` 只接收本机文件 URL，在启动尚未完成时合并排队；启动完成后调用现有 `StashStore.addFiles`，不另建存储路径或绕过内容去重。结果通过 Notch 面板显示，重复项会高亮已有项目。
 - **选中即时 / 双击激活**：单击立即选中；双击（时间戳识别，阈值 0.35s，避免 SwiftUI 消歧延迟）→ 文件/图片/链接打开、录音在当前行播放/暂停、**文字弹出原文预览窗**（可滚动、可选中复制）。
 - **图标与悬停快捷操作**：文件/文件夹用真实 Finder 图标（自动区分文件夹与各类型文件）；图片用缩略图；文字/链接用 SF Symbol。鼠标进入行后，音频图标叠加播放/暂停、文件夹图标叠加打开、普通文件和图片图标叠加快速预览；按钮直接覆盖在 34×34 图标命中区，不再占用行尾空间。音频活动期间按钮保持可见，便于随时暂停；VoiceOver 行操作仍提供等价的播放、打开或预览动作。
 - **键盘（面板打开时）**：Esc 先清选择再收起、`⌘V` 粘贴、`⌘C` 复制所选、`⌘A` 全选、Delete 删所选。
@@ -99,7 +98,7 @@
 
 ## 当前状态与验证
 
-- 0.6.0（build 7）已发布：95 单测绿，Universal DMG 完成 Developer ID 签名、Apple 公证与票据装订，Sparkle appcast 和 Cloudflare Pages 生产站已更新。本版本以多显示器吸附为主；TXT 内容重复识别仍有用户报告，继续排查，不作为本次发布完成项。
+- 0.7.0（build 8）已发布：103 单测绿，Universal DMG 完成 Developer ID 签名、Apple 公证与票据装订，Sparkle appcast 和 Cloudflare Pages 生产站已更新。本版本新增 DayDrop 双向联动、设置介绍与官网访问入口；本机正式安装版已确认药丸显示 DayDrop 今日文件夹按钮，点击后由 DayDrop 打开当天目录。DayDrop 条目右键到 ForNow 的完整 UI 交付仍未在本轮自动化中直接执行。TXT 内容重复识别仍有用户报告，继续排查，不作为本次发布完成项。
 - **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
 
 ## 非 MVP / 路线图
@@ -171,5 +170,5 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-18 · v0.6.0 多显示器版本发布**：版本升至 0.6.0（build 7），发布主题为多显示器小药丸吸附：设置可选择一块或多块屏幕，默认仍在刘海下；外接屏位于菜单栏下方中央，支持断开回退、重连恢复与设置即时生效。`dist/ForNow-0.6.0.dmg`（SHA-256 `172b06932154a2a8817a3b38fadb3ee86d61aa4fa13e4b2cf0315eb101fa3ae7`）完成 Developer ID 签名、公证 `Accepted`（提交号 `b3069d60-9f12-45ce-ae15-81a046cd2e2a`）与票据装订；包内 App 为 Universal arm64/x86_64，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 已发布 build 7，并生成到 build 3/4/5/6 的增量包；Cloudflare Pages 生产部署 `75101a9a-b0db-4968-a351-c4508b5dd34d` 已上线。生产首页、发布说明、appcast、DMG 缓存头、线上/本地哈希和下载包完整性均已验证；本机 `/Applications/ForNow.app` 已更新并启动。TXT 内容重复识别仍列为已知问题。
 - **2026-08-19 · DayDrop 今日文件夹联动**：新增 `DayDropIntegrationContract`，仅当 Launch Services 同时发现已安装的 `com.liuyuhang.DayDrop`，且 `daydrop://open-today-folder` handler 的路径与 bundle id 都匹配该安装副本时，在收起态分段胶囊显示文件夹按钮；旁边的 DerivedData 构建不会让旧安装包误显示。点击后由 DayDrop 完成今日目录准备、所有权记录与 Finder 打开；ForNow 不跨沙盒读取配置。新增 5 项契约测试；实际 Launch Services 刷新、药丸布局和 Finder 打开仍需安装包含新入口的 DayDrop 后真机验收。
 - **2026-08-19 · 设置页 DayDrop 介绍**：设置新增 DayDrop 介绍，说明按日期整理下载内容的产品定位、药丸打开今日文件夹和 DayDrop 下载文件或整理记录添加到 ForNow 的前置条件，并提供可点击、可复制的官网 `https://daydrop.liveby.app`。官网地址由 `DayDropIntegrationContract.homepageURL` 统一提供。
-- **2026-08-19 · DayDrop 记录右键反向联动**：新增外部文件接收能力版本与 `ExternalFileImportContract`；For Now 可从系统 open-document 事件接收 DayDrop 下载文件或整理记录对应的现有文件，过滤非文件 URL，并复用现有复制/去重/持久化路径，随后展开面板反馈结果。测试总数 103；实际 DayDrop 右键菜单、跨 App 文件交付和重启持久化仍需安装兼容的 DayDrop 与 For Now 后真机验收。
-- **2026-08-19 · ForNow 内置 Finder 右键扩展**：设置标签由「DayDrop」改为「扩展功能」，新增自有 Finder Sync 扩展状态与系统管理入口。`ForNowFinderExtension.appex` 从嵌入路径解析宿主 ForNow.app，在 Finder 右键菜单提供「添加到 ForNow」，不再依赖 DayDrop 扩展；主应用通过 `ExternalFileImportContract` 接收、复制、去重、持久化并反馈结果。新增 2 项宿主路径测试，测试总数 105。本机安装后已确认扩展注册并启用、独立进程运行、Finder 菜单真实出现，以及同一 open-document 接收端把唯一 TXT 加入面板；由于 Finder 插件菜单项没有可点击的辅助功能 frame，自动化未直接执行该菜单项，最终菜单点击到交付仍保留为待人工确认边界。
+- **2026-08-19 · DayDrop 条目右键反向联动**：新增外部文件接收能力版本与 `ExternalFileImportContract`；For Now 可从系统 open-document 事件接收 DayDrop 今日下载、下载文件或整理记录对应的现有文件，过滤非文件 URL，并复用现有复制/去重/持久化路径，随后展开面板反馈结果。实际 DayDrop 右键菜单、跨 App 文件交付和重启持久化仍需安装兼容的 DayDrop 与 For Now 后真机验收。
+- **2026-08-19 · v0.7.0 DayDrop 联动版本发布**：版本升至 0.7.0（build 8），发布主题为 DayDrop 双向联动、设置内独立介绍与官网访问入口。`dist/ForNow-0.7.0.dmg`（SHA-256 `e27485cd1a8654c4d5ccb5b9f5fe143cf32c1dd3a664924b09dcfe6e90548e0a`）完成 Developer ID 签名、Apple 公证 `Accepted`（提交号 `1e89c8b2-59ce-4ebc-b5fb-8d03d2b12fcb`）与票据装订；包内 App 为 Universal arm64/x86_64，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 已发布 build 8，并生成到 build 3/4/5/6/7 的增量包；Cloudflare Pages 最终生产部署 `2d079d8f-6b53-4ab6-b34e-f52c827e675a` 已上线。生产首页、0.7.0 发布说明、appcast、DMG 缓存头、线上/本地哈希和下载包完整性均已验证；官网新增 DayDrop 独立区块与 `https://daydrop.liveby.app/` 访问入口，并通过 `styles.css?revision=0.7.0` 修复首次部署时旧 CSS 缓存导致的新卡片样式缺失。正式 DMG 已安装到 `/Applications/ForNow.app`，旧版备份到 `~/Library/Application Support/ForNow Installer Backups/ForNow-before-0.7.0-release-20260819-142351.app`；真实药丸显示 DayDrop 文件夹按钮，点击后 Finder 打开 `Day 2026-08-19`。DayDrop 条目右键到 ForNow 的完整 UI 交付仍未在本轮自动化中直接执行；TXT 内容重复识别继续列为已知问题。

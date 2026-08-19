@@ -17,8 +17,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.6.0"
-    CURRENT_PROJECT_VERSION: "7"
+    MARKETING_VERSION: "0.7.0"
+    CURRENT_PROJECT_VERSION: "8"
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
     DEVELOPMENT_TEAM: ""
@@ -46,7 +46,6 @@ targets:
       - Sources/ForNow
     dependencies:
       - target: ForNowKit
-      - target: ForNowFinderExtension
       - package: Sparkle
     settings:
       base:
@@ -55,20 +54,6 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/ForNow/Support/ForNow.entitlements
         COMBINE_HIDPI_IMAGES: "YES"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-
-  ForNowFinderExtension:
-    type: app-extension
-    platform: macOS
-    sources:
-      - path: Sources/ForNowFinderExtension
-      - path: Sources/ForNowKit/Integration/ExternalFileImportContract.swift
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.fornow.app.FinderExtension
-        PRODUCT_NAME: ForNowFinderExtension
-        INFOPLIST_FILE: Sources/ForNowFinderExtension/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Sources/ForNowFinderExtension/ForNowFinderExtension.entitlements
-        SKIP_INSTALL: "YES"
 
   ForNowKitTests:
     type: bundle.unit-test
@@ -87,7 +72,6 @@ schemes:
     build:
       targets:
         ForNow: all
-        ForNowFinderExtension: all
         ForNowKitTests: [test]
     run:
       config: Debug
