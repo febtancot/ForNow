@@ -2,7 +2,7 @@
 
 > 文件、文字、链接，先搁这儿。
 
-![Version](https://img.shields.io/badge/version-0.7.5-2563EB)
+![Version](https://img.shields.io/badge/version-0.7.6-2563EB)
 ![macOS](https://img.shields.io/badge/macOS-14%2B-111827)
 [![License: MIT](https://img.shields.io/badge/license-MIT-F5C518)](LICENSE)
 

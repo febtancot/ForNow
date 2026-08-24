@@ -100,8 +100,8 @@
 
 ## 当前状态与验证
 
-- 0.7.5（build 9）已发布：107 单测绿，Universal DMG 完成 Developer ID 签名、Apple 公证与票据装订，Sparkle appcast 和 Cloudflare Pages 生产站已更新。本版本新增暂存备注，可右键添加或编辑，列表直接展示，并随本地元数据、回收站和恢复流程保留；旧元数据兼容加载。正式安装版已通过 Sparkle 更新并实际确认备注展示。TXT 内容重复识别仍有用户报告，继续排查，不作为本次发布完成项。
-- **仅命令行无法验证**：本环境无屏幕录制权限（截图全黑）、无 UI 自动化，故刘海点击/拖拽/粘贴/快捷键等交互需真机肉眼验收。
+- 0.7.6（build 10）已发布：保留「刷新显示器列表」，并新增 Core Graphics 常驻重配置监听，在 `NSScreen` UUID 列表稳定后自动同步设置与小药丸窗口；新显示器不会自动加入用户选择。107 单测通过，Universal DMG 完成 Developer ID 签名、Apple 公证与票据装订，Sparkle appcast 和 Cloudflare Pages 生产站已更新。本机已从 0.7.5 通过 Sparkle 完成下载、安装与重启，并显示 0.7.6（10）。真实外接屏热插拔后的自动刷新仍需在日常硬件切换中继续观察。
+- **自动验证边界**：源码、单测、构建、签名、公证、浏览器检查和辅助功能驱动的 UI 操作，都不能替代真实刘海点击、Finder 拖放、快捷键手感或外接屏热插拔验收；这些交互仍需在实际硬件上确认。
 
 ## 非 MVP / 路线图
 
@@ -178,3 +178,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-20 · v0.7.5 暂存备注版本发布**：版本升至 0.7.5（build 9）。`dist/ForNow-0.7.5.dmg`（SHA-256 `95d10f1cbaea55dc772b530a158c8075ddd97f6bc35df5e112d884bb6445adb6`）完成 Developer ID 签名、Apple 公证 `Accepted`（提交号 `0eb0d1f9-971f-4cb8-9baa-3b23a0b048b9`）与票据装订；包内 App 为 Universal arm64/x86_64，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 已发布 build 9，并生成从 build 4/5/6/7/8 升级的增量包；Cloudflare Pages 生产部署 `bc9b93da-3cda-44dc-b16d-557547e59f7c` 已上线。官网新增暂存备注功能说明、带备注的面板示意、0.7.5 更新卡片和独立发布说明；桌面与 390 px 移动端无横向溢出，生产控制台无错误。生产首页、发布说明、appcast、DMG/delta 缓存头、线上/本地 DMG 哈希和下载包内版本/架构/签名均已验证。本机 `/Applications/ForNow.app` 已通过 Sparkle 更新为正式 0.7.5，主可执行文件与 DMG 内版本哈希一致，并实际显示现有备注。
 - **2026-08-24 · 外接显示器列表刷新**：设置「吸附屏幕」新增「刷新显示器列表」按钮；设置页重新出现、应用回到前台或收到系统屏幕参数变化通知时也会自动重读 `NSScreen.screens`。每次刷新同时通知 `NotchController` 重建、移除或重定位小药丸窗口，避免设置列表和实际吸附窗口状态不一致。
 - **2026-08-24 · Core Graphics 常驻显示器监听**：保留设置中的手动刷新，并新增进程级 `DisplayReconfigurationMonitor`。监听 Quartz 显示器重配置回调，跳过 begin 阶段、合并同轮多屏事件，每 200ms 复查 `NSScreen` UUID 列表，连续稳定或约 1 秒到期后同步设置列表与所有小药丸窗口；原 AppKit 通知继续作为快速路径。
+- **2026-08-24 · v0.7.6 显示器刷新版本发布**：版本升至 0.7.6（build 10）。`dist/ForNow-0.7.6.dmg`（SHA-256 `728fe2f0d6cd248e1c3400ad6b5646a32b17fd4c2b6decfaee0e2770455457b4`）完成 Developer ID 签名、Apple 公证 `Accepted`（提交号 `59e7db95-b279-449e-acde-035f102b320c`）与票据装订；包内 App 为 Universal arm64/x86_64，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 已发布 build 10，并生成从 build 9 升级的增量包；Cloudflare Pages 生产部署 `26c416d1-5964-4a29-8adb-20faf33aeaae` 已上线。官网首页、独立发布说明、appcast、DMG 与缓存头均已验证，远程 DMG 哈希与本地、站点副本一致；1440 px 与 390 px 浏览器检查无横向溢出、图片缺失或页面错误。本机 `/Applications/ForNow.app` 已通过 Sparkle 从 0.7.5（9）更新到正式 0.7.6（10），安装后二进制哈希与 DMG 包内 App 一致。真实外接屏热插拔后的自动刷新仍需继续观察，不以发布验证替代硬件交互验收。
