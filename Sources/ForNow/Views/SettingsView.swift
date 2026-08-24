@@ -35,6 +35,12 @@ struct SettingsView: View {
         )) { _ in
             refreshDisplays()
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: .forNowDisplayConfigurationDidStabilize
+        )) { _ in
+            // NotchController 已由 AppDelegate 同步；这里只更新设置页的当前列表。
+            connectedDisplays = ConnectedDisplay.current()
+        }
     }
 
     private var generalTab: some View {

@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusController: StatusItemController?
     private var notchController: NotchController?
+    private var displayReconfigurationMonitor: DisplayReconfigurationMonitor?
     private let hotKeyManager = HotKeyManager()
     private var cancellables: Set<AnyCancellable> = []
     private var pendingExternalFileURLs: [URL] = []
@@ -44,6 +45,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.notchController = notch
         self.statusController = status
+        self.displayReconfigurationMonitor = DisplayReconfigurationMonitor(
+            snapshotProvider: {
+                NSScreen.screens.compactMap(DisplayIdentity.identifier(for:))
+            },
+            onStableConfiguration: { [weak self] in
+                self?.refreshDisplays()
+                NotificationCenter.default.post(
+                    name: .forNowDisplayConfigurationDidStabilize,
+                    object: nil
+                )
+            }
+        )
 
         if !pendingExternalFileURLs.isEmpty {
             let urls = pendingExternalFileURLs
