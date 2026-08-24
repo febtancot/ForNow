@@ -10,7 +10,7 @@ struct ForNowApp: App {
         Settings {
             // 场景内容里拿到的 openSettings 动作，经 AppDelegate 桥接给
             // 状态栏菜单的"设置…"（AppKit 侧没有可用的 settings-window API）。
-            SettingsView()
+            SettingsView(onRefreshDisplays: appDelegate.refreshDisplays)
                 .environmentObject(appDelegate.store)
                 .environmentObject(appDelegate.settings)
                 .environmentObject(appDelegate.updaterModel)

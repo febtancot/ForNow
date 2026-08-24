@@ -104,6 +104,11 @@ final class NotchController: ObservableObject {
         panelWidth = clampedPanelWidth(panelWidth)
     }
 
+    /// 供设置页在重新扫描显示器列表时同步重建、移除或重定位小药丸窗口。
+    func refreshDisplays() {
+        refreshAttachedWindows()
+    }
+
     // MARK: - DayDrop 联动
 
     func refreshDayDropAvailability() {

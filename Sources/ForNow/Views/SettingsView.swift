@@ -6,6 +6,11 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var updater: UpdaterModel
     @State private var connectedDisplays = ConnectedDisplay.current()
+    let onRefreshDisplays: () -> Void
+
+    init(onRefreshDisplays: @escaping () -> Void = {}) {
+        self.onRefreshDisplays = onRefreshDisplays
+    }
 
     var body: some View {
         TabView {
@@ -17,10 +22,18 @@ struct SettingsView: View {
                 .tabItem { Label("更新", systemImage: "arrow.down.circle") }
         }
         .frame(width: 480, height: 500)
+        .onAppear {
+            refreshDisplays()
+        }
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didChangeScreenParametersNotification
         )) { _ in
-            connectedDisplays = ConnectedDisplay.current()
+            refreshDisplays()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification
+        )) { _ in
+            refreshDisplays()
         }
     }
 
@@ -76,10 +89,18 @@ struct SettingsView: View {
                     .disabled(isOnlyEffectiveDisplay(display.id))
                 }
 
+                Text("可同时选择多块屏幕；所选屏幕断开时会临时回到默认屏幕。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 HStack {
-                    Text("可同时选择多块屏幕；所选屏幕断开时会临时回到默认屏幕。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Button {
+                        refreshDisplays()
+                    } label: {
+                        Label("刷新显示器列表", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.link)
+
                     Spacer()
                     Button("恢复默认") { settings.resetAttachedDisplays() }
                         .buttonStyle(.link)
@@ -212,6 +233,11 @@ struct SettingsView: View {
 
     private func isOnlyEffectiveDisplay(_ displayID: String) -> Bool {
         effectiveConnectedDisplayIDs == Set([displayID])
+    }
+
+    private func refreshDisplays() {
+        connectedDisplays = ConnectedDisplay.current()
+        onRefreshDisplays()
     }
 }
 

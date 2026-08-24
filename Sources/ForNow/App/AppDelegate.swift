@@ -28,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { NSApp.keyWindow?.makeKeyAndOrderFront(nil) }
     }
 
+    /// 重新读取当前屏幕并同步小药丸窗口；设置页的手动刷新也走同一条路径。
+    func refreshDisplays() {
+        notchController?.refreshDisplays()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
