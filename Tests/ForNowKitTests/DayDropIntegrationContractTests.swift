@@ -50,4 +50,47 @@ final class DayDropIntegrationContractTests: XCTestCase {
             "daydrop://open-today-folder"
         )
     }
+
+    func testTargetDisplayCapabilityRequiresSupportedVersion() {
+        XCTAssertFalse(DayDropIntegrationContract.supportsTargetDisplay(infoDictionary: nil))
+        XCTAssertFalse(
+            DayDropIntegrationContract.supportsTargetDisplay(
+                infoDictionary: [DayDropIntegrationContract.targetDisplayCapabilityInfoKey: 0]
+            )
+        )
+        XCTAssertTrue(
+            DayDropIntegrationContract.supportsTargetDisplay(
+                infoDictionary: [DayDropIntegrationContract.targetDisplayCapabilityInfoKey: 1]
+            )
+        )
+        XCTAssertTrue(
+            DayDropIntegrationContract.supportsTargetDisplay(
+                infoDictionary: [DayDropIntegrationContract.targetDisplayCapabilityInfoKey: "2"]
+            )
+        )
+    }
+
+    func testTargetDisplayURLCarriesDisplayIdentity() throws {
+        let url = try XCTUnwrap(
+            DayDropIntegrationContract.openTodayFolderURL(
+                targetDisplayID: "runtime-display-42"
+            )
+        )
+        let components = try XCTUnwrap(
+            URLComponents(url: url, resolvingAgainstBaseURL: false)
+        )
+
+        XCTAssertEqual(url.host, "open-today-folder")
+        XCTAssertEqual(
+            components.queryItems,
+            [URLQueryItem(name: "display-id", value: "runtime-display-42")]
+        )
+    }
+
+    func testTargetDisplayURLRejectsEmptyIdentity() {
+        XCTAssertNil(DayDropIntegrationContract.openTodayFolderURL(targetDisplayID: ""))
+        XCTAssertNil(
+            DayDropIntegrationContract.openTodayFolderURL(targetDisplayID: "screen one")
+        )
+    }
 }

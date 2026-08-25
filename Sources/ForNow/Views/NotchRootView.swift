@@ -32,13 +32,19 @@ struct ClosedPillView: View {
     let displayID: String
 
     var body: some View {
+        let hasNotch = controller.displayHasNotch(displayID)
         ZStack {
             // 铺满整个窗口（= 刘海区域）的命中层。用极低不透明度而非 Color.clear，
             // 因为 Color.clear 只参与悬停、不参与点击命中（点了没反应的根因）。
             Color.white.opacity(0.001)
             ClosedCapsuleBar(displayID: displayID, hovering: hovering)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, 2)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: hasNotch ? .bottom : .top
+                )
+                .padding(.top, hasNotch ? 0 : 2)
+                .padding(.bottom, hasNotch ? 2 : 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -126,11 +132,15 @@ struct ClosedCapsuleBar: View {
     }
 
     private var dayDropSegment: some View {
-        Button { controller.openDayDropTodayFolder() } label: {
+        Button { controller.openDayDropTodayFolder(on: displayID) } label: {
             Image(systemName: "folder.fill")
                 .font(.system(size: 11, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                // 只向胶囊最右侧和上下扩大命中区；左边界仍由分隔线固定，
+                // 因此不会覆盖中间的暂存按钮。
+                .padding(.leading, 10)
+                .padding(.trailing, 16)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("使用 DayDrop 打开今日文件夹")

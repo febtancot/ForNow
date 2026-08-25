@@ -26,6 +26,8 @@ final class NotchController: ObservableObject {
     @Published private(set) var panelWidth: CGFloat
     /// 仅当系统确认 DayDrop 已安装且能够处理正式联动入口时为 true。
     @Published private(set) var canOpenDayDropTodayFolder = false
+    /// 已安装的 DayDrop 是否支持把 Finder 窗口定位到调用方指定的显示器。
+    private var dayDropSupportsTargetDisplay = false
 
     /// 快速录入输入条的独立状态（独立观察，打字/粘贴不触发面板整体重渲染）。
     let draftModel = DraftModel()
@@ -121,23 +123,35 @@ final class NotchController: ObservableObject {
         )
         let schemeHandlerBundleIdentifier = schemeHandlerURL
             .flatMap { Bundle(url: $0)?.bundleIdentifier }
+        let schemeHandlerInfoDictionary = schemeHandlerURL
+            .flatMap { Bundle(url: $0)?.infoDictionary }
 
         canOpenDayDropTodayFolder = DayDropIntegrationContract.canOpenTodayFolder(
             installedApplicationURL: installedApplicationURL,
             schemeHandlerApplicationURL: schemeHandlerURL,
             schemeHandlerBundleIdentifier: schemeHandlerBundleIdentifier
         )
+        dayDropSupportsTargetDisplay = canOpenDayDropTodayFolder
+            && DayDropIntegrationContract.supportsTargetDisplay(
+                infoDictionary: schemeHandlerInfoDictionary
+            )
     }
 
-    func openDayDropTodayFolder() {
+    func openDayDropTodayFolder(on displayID: String) {
         refreshDayDropAvailability()
         guard canOpenDayDropTodayFolder else {
             NSSound.beep()
             return
         }
 
-        guard NSWorkspace.shared.open(DayDropIntegrationContract.openTodayFolderURL) else {
+        let targetURL = dayDropSupportsTargetDisplay
+            ? DayDropIntegrationContract.openTodayFolderURL(targetDisplayID: displayID)
+            : nil
+        let url = targetURL ?? DayDropIntegrationContract.openTodayFolderURL
+
+        guard NSWorkspace.shared.open(url) else {
             canOpenDayDropTodayFolder = false
+            dayDropSupportsTargetDisplay = false
             NSSound.beep()
             return
         }
@@ -398,6 +412,11 @@ final class NotchController: ObservableObject {
 
     private func screen(for displayID: String) -> NSScreen? {
         NSScreen.screens.first(where: { DisplayIdentity.identifier(for: $0) == displayID })
+    }
+
+    /// 胶囊视觉位置需要区分刘海屏与普通外接屏：前者贴在刘海下方，后者贴近菜单栏下沿。
+    func displayHasNotch(_ displayID: String) -> Bool {
+        (screen(for: displayID)?.safeAreaInsets.top ?? 0) > 0
     }
 
     private func metrics(for screen: NSScreen) -> NotchMetrics {
