@@ -53,11 +53,15 @@ final class NotchController: ObservableObject {
     private var resizeEdge: HorizontalEdge?
     private var resizeStartWidth: CGFloat?
     private var resizeStartMouseX: CGFloat?
+    private var allowsFullScreenPresentation: Bool
+    private var fullScreenCoveredDisplayIDs: Set<String> = []
+    private var fullScreenVisibilityMonitor: FullScreenVisibilityMonitor?
 
     init(store: StashStore, settings: AppSettings) {
         self.store = store
         self.settings = settings
         self.panelWidth = CGFloat(settings.panelWidth)
+        self.allowsFullScreenPresentation = settings.enableInFullScreen
 
         draftModel.onSubmit = { [weak self] in self?.submitDraft() }
         draftModel.draftDidChange
@@ -89,9 +93,7 @@ final class NotchController: ObservableObject {
         settings.$enableInFullScreen
             .dropFirst()
             .sink { [weak self] enabled in
-                self?.windows.values.forEach {
-                    $0.setFullScreenParticipationEnabled(enabled)
-                }
+                self?.applyFullScreenPreference(enabled)
             }
             .store(in: &cancellables)
 
@@ -111,6 +113,15 @@ final class NotchController: ObservableObject {
         }
 
         refreshAttachedWindows()
+        fullScreenVisibilityMonitor = FullScreenVisibilityMonitor(
+            displayBoundsProvider: { [weak self] in
+                self?.quartzDisplayBoundsByID() ?? [:]
+            },
+            onCoverageChange: { [weak self] coveredDisplayIDs in
+                self?.applyFullScreenCoverage(coveredDisplayIDs)
+            }
+        )
+        fullScreenVisibilityMonitor?.start()
         refreshDayDropAvailability()
         panelWidth = clampedPanelWidth(panelWidth)
     }
@@ -177,6 +188,7 @@ final class NotchController: ObservableObject {
     /// 展开指定屏幕上的面板；未指定时优先使用已选的刘海屏，其次主屏。
     func open(on requestedDisplayID: String? = nil) {
         guard let displayID = resolvedOpenDisplayID(requestedDisplayID),
+              !fullScreenCoveredDisplayIDs.contains(displayID),
               let window = windows[displayID] else { return }
         if isOpen, activeDisplayID == displayID { return }
 
@@ -212,7 +224,11 @@ final class NotchController: ObservableObject {
         isShowingTrash = false
         if let displayID = closingDisplayID {
             setFrame(closedFrame(for: displayID), on: displayID, animate: settings.animations)
-            windows[displayID]?.orderFrontRegardless()
+            if fullScreenCoveredDisplayIDs.contains(displayID) {
+                windows[displayID]?.orderOut(nil)
+            } else {
+                windows[displayID]?.orderFrontRegardless()
+            }
         }
     }
 
@@ -387,12 +403,18 @@ final class NotchController: ObservableObject {
                 ? metrics(for: screen).openFrame(width: panelWidth, height: window.contentHeight)
                 : metrics(for: screen).closedFrame()
             window.setFrame(frame, display: true, animate: false)
-            window.orderFrontRegardless()
+            if fullScreenCoveredDisplayIDs.contains(displayID) {
+                window.orderOut(nil)
+            } else {
+                window.orderFrontRegardless()
+            }
         }
+        fullScreenCoveredDisplayIDs.formIntersection(targetSet)
+        fullScreenVisibilityMonitor?.refreshNow()
     }
 
     private func makeWindow(for displayID: String) -> NotchWindow {
-        let window = NotchWindow(enableInFullScreen: settings.enableInFullScreen)
+        let window = NotchWindow(enableInFullScreen: allowsFullScreenPresentation)
         let root = NotchRootView(displayID: displayID)
             .environmentObject(store)
             .environmentObject(settings)
@@ -411,12 +433,65 @@ final class NotchController: ObservableObject {
     }
 
     private func resolvedOpenDisplayID(_ requestedDisplayID: String?) -> String? {
-        if let requestedDisplayID, windows[requestedDisplayID] != nil { return requestedDisplayID }
+        if let requestedDisplayID,
+           windows[requestedDisplayID] != nil,
+           !fullScreenCoveredDisplayIDs.contains(requestedDisplayID) {
+            return requestedDisplayID
+        }
         if let notchedID = attachedDisplayOrder.first(where: { id in
-            (screen(for: id)?.safeAreaInsets.top ?? 0) > 0
+            !fullScreenCoveredDisplayIDs.contains(id)
+                && (screen(for: id)?.safeAreaInsets.top ?? 0) > 0
         }) { return notchedID }
-        if let mainID = NSScreen.main.flatMap(DisplayIdentity.identifier(for:)), windows[mainID] != nil { return mainID }
-        return attachedDisplayOrder.first
+        if let mainID = NSScreen.main.flatMap(DisplayIdentity.identifier(for:)),
+           windows[mainID] != nil,
+           !fullScreenCoveredDisplayIDs.contains(mainID) {
+            return mainID
+        }
+        return attachedDisplayOrder.first(where: { !fullScreenCoveredDisplayIDs.contains($0) })
+    }
+
+    // MARK: - 全屏可见性
+
+    private func quartzDisplayBoundsByID() -> [String: CGRect] {
+        Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { screen in
+            guard let displayID = DisplayIdentity.identifier(for: screen),
+                  let bounds = DisplayIdentity.quartzBounds(for: screen) else { return nil }
+            return (displayID, bounds)
+        })
+    }
+
+    private func applyFullScreenPreference(_ enabled: Bool) {
+        allowsFullScreenPresentation = enabled
+        windows.values.forEach { $0.setFullScreenParticipationEnabled(enabled) }
+
+        if enabled {
+            fullScreenCoveredDisplayIDs.removeAll()
+            windows.values.forEach { $0.orderFrontRegardless() }
+        } else {
+            fullScreenVisibilityMonitor?.refreshNow()
+        }
+    }
+
+    private func applyFullScreenCoverage(_ coveredDisplayIDs: Set<String>) {
+        let nextCoveredIDs = allowsFullScreenPresentation
+            ? []
+            : coveredDisplayIDs.intersection(windows.keys)
+        guard nextCoveredIDs != fullScreenCoveredDisplayIDs else { return }
+
+        let previousCoveredIDs = fullScreenCoveredDisplayIDs
+        fullScreenCoveredDisplayIDs = nextCoveredIDs
+
+        if let activeDisplayID, nextCoveredIDs.contains(activeDisplayID) {
+            close()
+        }
+
+        for (displayID, window) in windows {
+            if nextCoveredIDs.contains(displayID) {
+                window.orderOut(nil)
+            } else if previousCoveredIDs.contains(displayID) {
+                window.orderFrontRegardless()
+            }
+        }
     }
 
     private func screen(for displayID: String) -> NSScreen? {

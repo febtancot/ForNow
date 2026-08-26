@@ -26,8 +26,9 @@ final class NotchWindow: NSPanel {
         animationBehavior = .none
     }
 
-    /// `.fullScreenAuxiliary` 会让面板与其他 App 的全屏窗口同处一个 Space。
-    /// 默认不设置它，确保全屏视频和其他沉浸式内容位于胶囊上层。
+    /// `.fullScreenAuxiliary` 会让面板明确参与其他 App 的全屏 Space。
+    /// Chrome/YouTube 仍可能让 `.canJoinAllSpaces` 窗口出现在视频上方，因此关闭时
+    /// 还会由 `FullScreenVisibilityMonitor` 按显示器隐藏被全屏内容覆盖的窗口。
     func setFullScreenParticipationEnabled(_ enabled: Bool) {
         var behavior: NSWindow.CollectionBehavior = [
             .canJoinAllSpaces,
