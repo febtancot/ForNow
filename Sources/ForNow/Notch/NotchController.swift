@@ -86,6 +86,15 @@ final class NotchController: ObservableObject {
             }
             .store(in: &cancellables)
 
+        settings.$enableInFullScreen
+            .dropFirst()
+            .sink { [weak self] enabled in
+                self?.windows.values.forEach {
+                    $0.setFullScreenParticipationEnabled(enabled)
+                }
+            }
+            .store(in: &cancellables)
+
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .sink { [weak self] _ in self?.refreshAttachedWindows() }
             .store(in: &cancellables)
@@ -383,7 +392,7 @@ final class NotchController: ObservableObject {
     }
 
     private func makeWindow(for displayID: String) -> NotchWindow {
-        let window = NotchWindow()
+        let window = NotchWindow(enableInFullScreen: settings.enableInFullScreen)
         let root = NotchRootView(displayID: displayID)
             .environmentObject(store)
             .environmentObject(settings)

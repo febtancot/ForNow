@@ -47,7 +47,10 @@ struct SettingsView: View {
         Form {
             Section("启动") {
                 Toggle("登录时启动", isOn: $settings.launchAtLogin)
-                Toggle("全屏应用中启用", isOn: $settings.enableInFullScreen)
+                Toggle("在全屏应用中显示胶囊", isOn: $settings.enableInFullScreen)
+                Text("关闭时，胶囊不会覆盖全屏视频或其他全屏内容。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("反馈") {
                 Toggle("声音反馈", isOn: $settings.soundFeedback)

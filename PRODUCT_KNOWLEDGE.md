@@ -48,7 +48,7 @@
 | 本地持久化 | ✅ | 文件复制进 `~/Library/Application Support/ForNow/Files/<uuid>/原名`，元数据 JSON；重启仍在 |
 | 重名处理 | ✅ | 内部用 uuid 子目录保证唯一，界面显示原名 |
 | 菜单栏备用入口 | ✅ | 状态栏图标（SF Symbol `tray.and.arrow.down.fill`，13pt，模板自适应）|
-| 设置 | ✅ | 登录启动、全屏启用、声音、动画；全局快捷键录制；打开即置前（激活 App，不被其他窗口遮挡）|
+| 设置 | ✅ | 登录启动、全屏显示胶囊（默认关闭，避免覆盖视频）、声音、动画；全局快捷键录制；打开即置前（激活 App，不被其他窗口遮挡）|
 | 全局快捷键 | ✅ | 默认 ⌃⌥Space（Carbon `RegisterEventHotKey`）|
 | 反馈 | ✅ | toast + 声音；深色模式、VoiceOver 标签 |
 | 多屏吸附 | ✅ | 默认仍在刘海下；设置列出当前显示器（含左右/上下位置），可单选或多选，并保留「刷新显示器列表」。应用常驻监听 Core Graphics 显示器重配置；忽略配置开始事件，合并同轮多屏回调，并在 `NSScreen` UUID 列表连续稳定后自动同步设置列表与小药丸窗口。设置页出现、应用重新激活及 AppKit 屏幕参数通知仍提供快速刷新。每块已选屏幕各有一个收起态小药丸，点击哪块就只在哪块展开；外接/无刘海屏在菜单栏下沿保留 2pt 间距，视觉位置不再沉到 34pt 窗口底部。显示器 UUID 跨重启保存，断开时临时回退默认屏，重连自动恢复 |
@@ -60,6 +60,7 @@
 
 - **刘海命中区**：刘海缺口本身无可点击像素，真正命中的是缺口正下方一条覆盖刘海宽度、下延 ~18pt 的热区；透明命中层用 `Color.white.opacity(0.001)`（`Color.clear` 只响应悬停、不响应点击）。
 - **首次点击**：面板用 `NotchHostingView` 重写 `acceptsFirstMouse` 返回 true，应用未激活时首击也生效。
+- **全屏层级**：胶囊在普通桌面继续使用 `.statusBar` 层级并跨 Space 显示，但默认不声明 `.fullScreenAuxiliary`，因此不会加入其他 App 的全屏 Space、覆盖全屏视频。设置中显式开启「在全屏应用中显示胶囊」后才加入；切换会实时更新所有已吸附屏幕的窗口。
 - **展开面板宽度**：默认 384pt。展开后左右边缘各有 10pt 透明拖拽命中区，悬停显示细线并切换横向缩放光标；面板始终以刘海为中心，边缘移动 1pt 对应总宽度变化 2pt。拖动区由 AppKit `NSView` 原生接收 `mouseDown`、`mouseDragged` 和 `mouseUp`，以首次按下时的宽度和屏幕绝对 X 坐标为固定基准；即使宿主窗口在缩放中持续移动，也不会像 SwiftUI `DragGesture` 那样中断、重建或重新起算。全局范围为 320–720pt，实际还会按当前屏幕宽度及 `刘海宽度 + 96pt` 安全下限动态限制。拖拽结束（或拖拽中收起）通过 `AppSettings.panelWidth` 写入 UserDefaults，重启继续使用；设置「面板」显示当前宽度并可恢复默认 384pt，已展开面板会立即同步；VoiceOver 可按 32pt 步长增减。
 - **多屏窗口模型**：`NotchController` 按设置为每块目标屏幕维护独立 `NotchWindow`，共享同一份暂存、草稿、录音和播放状态。所有目标屏幕可同时显示收起态小药丸，但任一时刻只允许一块屏幕展开；点击另一块屏幕会把面板切换过去。默认目标优先带刘海的屏幕，其次主屏；全局快捷键和菜单栏入口也遵循这个顺序。无刘海屏使用 `visibleFrame.maxY` 作为吸附线，胶囊在窗口内改为顶部对齐并保留 2pt 间距；刘海屏仍在刘海下方按原逻辑底部对齐。屏幕参数变化后立即重建/重定位窗口。
 - **DayDrop 能力发现**：`DayDropIntegrationContract` 固定 bundle id 与 `daydrop://open-today-folder` 契约。`NotchController` 同时检查 Launch Services 中的已安装应用、URL handler 路径和 handler bundle id，只在安装副本本身提供入口时发布可用状态，避免旁边的旧包或 DerivedData 开发构建误触发；应用启动、退出及胶囊重新出现时刷新。DayDrop 的 Info.plist 声明 `DayDropOpenTodayFolderTargetDisplayVersion >= 1` 时，打开请求附带点击位置对应的 ColorSync 显示器 UUID；旧版继续使用稳定无参数 URL。目录授权、创建、归属登记和 Finder 打开均留在 DayDrop 内执行。
@@ -83,7 +84,7 @@
 - 技术栈：Swift 5 语言模式 / Xcode 26 / AppKit + SwiftUI；XcodeGen 生成工程，`xcodebuild` 构建；目标 macOS 14+。
 - `ForNowKit`（**静态库**）：数据模型、存储、剪贴板归类、Notch 几何、设置、快捷键模型 —— 纯逻辑、可单测。
 - `ForNow`（**菜单栏 App**，`LSUIElement`）：Notch 窗口/面板、系统集成，依赖 ForNowKit。
-- `ForNowKitTests`：107 个单测，无需 app host。
+- `ForNowKitTests`：112 个单测，无需 app host。
 - 关键文件：`NotchController`（多屏窗口/开合/宽度调整/拖入/粘贴/选择/反馈/录音与播放协调）、`DropFileURLLoader`/`DropFileURLDecoder`（拖放文件 URL 优先读取与原始表示解码）、`DisplayIdentity`（ColorSync 显示器 UUID）、`DisplayAttachmentSelection`（自动选择、多选和断开回退纯逻辑）、`RecordingController`（AVAudioRecorder 录音状态机）、`AudioPlaybackController`（AVAudioPlayer 单实例播放/进度/定位）、`ContentHasher`（文件内容 SHA-256）、`DraftModel`（输入条独立状态）、`DraftTextMetrics`（截断高度测量）、`NotchMetrics`（含菜单栏下吸附线的几何）、`AppSettings`（持久化面板宽度与屏幕选择）、`StashStore`（暂存与回收站仓库）、`DiskFileStorage`/`JSONMetadataStore`/`JSONTrashMetadataStore`（持久化）、`PasteboardImporter`（归类）、`StatusItemController`（菜单栏）、`UpdaterModel`（Sparkle 更新桥接，KVO → SwiftUI）。
 
 ## 关键决策与取舍
@@ -183,3 +184,4 @@ xcodebuild -scheme ForNow -destination 'platform=macOS' -derivedDataPath ./build
 - **2026-08-25 · 外接屏胶囊与今日文件夹落屏**：无刘海外接屏的收起胶囊改为在 34pt 热区内顶部对齐，距菜单栏下沿 2pt；最右侧 DayDrop 文件夹段仅向右与上下增加 padding，左边界仍由分隔线固定，避免覆盖中间暂存按钮。ForNow 新增目标显示器能力探测，兼容版 DayDrop 可接收点击屏幕的稳定 ID，在完成原有授权与目录准备后把新 Finder 窗口居中放到同一屏；旧版 DayDrop 自动回退无参数入口。新增 3 项契约测试，ForNow 110 单测通过；两台外接屏的视觉间距、按钮实际命中和跨应用自动化授权仍需安装兼容 Debug 版后人工交互验收。
 - **2026-08-26 · 三屏 Debug 安装与联动验收**：同版本号 Debug 测试构建已可恢复地替换 `/Applications/ForNow.app` 与 `/Applications/DayDrop.app`，旧副本分别保存在废纸篓的 `ForNow-replaced-20260826-0000-ft2UoK/ForNow.app` 和 `DayDrop-replaced-20260826-000021-x8pQrB/DayDrop.app`，用户数据未清理。运行中确认内建屏、Studio Display XDR、Mi Monitor 各有独立收起窗口；轮换到 Mi 的 `190×34` 窗口后，截图确认胶囊位于热区顶部。实际点击该窗口的 DayDrop 文件夹段后，Finder 新建 `Day 2026-08-26` 窗口并落在 Mi 范围内（WindowServer bounds `2576,-875,1000×700`）；Studio Display 目标请求也落在对应范围（`336,-1055,1000×700`）。点击同一 Mi 胶囊的中间暂存段只在 Mi 展开 `421×470` 面板，没有触发文件夹，随后成功收起。系统未再次显示自动化提示，已安装 DayDrop 的 Finder Apple Event 定位实际生效。测试版未生成 DMG、未公证、未发布网站，正式发行状态仍为 0.7.6（10）/ DayDrop 1.2.0（8）。
 - **2026-08-26 · v0.7.7 外接屏胶囊版本发布**：版本升至 0.7.7（build 11）。`dist/ForNow-0.7.7.dmg`（SHA-256 `ea76b1914d46e852a40619a29e6a1b25e92d60126e0a06d63def83eef538973b`）完成 Developer ID 签名、Apple 公证 `Accepted`（提交号 `f7b05633-e806-4a23-aa71-3b261662f9ae`）与票据装订；包内 App 为 Universal `x86_64 arm64`，Gatekeeper 显示 `source=Notarized Developer ID`。Sparkle appcast 发布 build 11，Cloudflare Pages 生产部署 `e1efa873-fbff-433a-af99-6da0675aef69` 已上线；本地、站点与远程 DMG 哈希一致，桌面与 390 px 页面无横向溢出、破图或浏览器错误。配套 DayDrop 1.2.1（build 9，SHA-256 `bcc20f2ff25fa81ce8402a9b967f039ec3b6fe3a25333ca68fd625da5f112dda`）公证提交 `ee3c0335-c67f-4093-b164-7538ffe0ccf1` 及生产部署 `d69686e2-acf5-420d-8b0c-de46b0841210` 也已验证。`/Applications/ForNow.app` 已通过线上 Sparkle 从 0.7.6 完成安装和重启，主二进制与 DMG 内 App 一致；正式 DayDrop 1.2.1 通过公证 DMG 可恢复安装。使用两份正式安装版从 Studio Display 的 ForNow 胶囊点击后，Finder 新窗口落在该屏范围（`336,-1082,1000×700`）。DayDrop 的权限拒绝路径和显示器断开回退仍需单独交互验收。
+- **2026-08-26 · 全屏视频层级修复**：修复设置中的全屏开关只持久化、未实际控制窗口的问题。胶囊默认不再声明 `.fullScreenAuxiliary`，不会加入其他 App 的全屏 Space 覆盖视频；普通桌面的 `.statusBar` 置顶和跨 Space 行为保持不变。用户显式开启「在全屏应用中显示胶囊」时才恢复全屏参与，切换会实时作用于所有胶囊窗口；新增默认值与持久化回归测试。

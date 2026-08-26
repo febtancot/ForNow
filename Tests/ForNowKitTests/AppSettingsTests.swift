@@ -3,6 +3,20 @@ import XCTest
 
 @MainActor
 final class AppSettingsTests: XCTestCase {
+    func testFullScreenParticipationDefaultsToDisabled() {
+        let settings = AppSettings(defaults: makeDefaults())
+
+        XCTAssertFalse(settings.enableInFullScreen)
+    }
+
+    func testFullScreenParticipationPersistsExplicitChoice() {
+        let defaults = makeDefaults()
+        let settings = AppSettings(defaults: defaults)
+        settings.enableInFullScreen = true
+
+        XCTAssertTrue(AppSettings(defaults: defaults).enableInFullScreen)
+    }
+
     func testPanelWidthDefaultsToOriginalWidth() {
         let defaults = makeDefaults()
         let settings = AppSettings(defaults: defaults)

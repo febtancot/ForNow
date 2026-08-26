@@ -13,7 +13,9 @@ public final class AppSettings: ObservableObject {
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.launchAtLogin = defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? false
-        self.enableInFullScreen = defaults.object(forKey: Keys.enableInFullScreen) as? Bool ?? true
+        // 默认避开全屏 Space，防止胶囊覆盖视频等沉浸式内容。
+        // 已明确修改过此选项的用户仍沿用其持久化选择。
+        self.enableInFullScreen = defaults.object(forKey: Keys.enableInFullScreen) as? Bool ?? false
         self.soundFeedback = defaults.object(forKey: Keys.soundFeedback) as? Bool ?? true
         self.animations = defaults.object(forKey: Keys.animations) as? Bool ?? true
         let storedPanelWidth = defaults.object(forKey: Keys.panelWidth).map { _ in defaults.double(forKey: Keys.panelWidth) }
@@ -26,7 +28,7 @@ public final class AppSettings: ObservableObject {
         didSet { defaults.set(launchAtLogin, forKey: Keys.launchAtLogin) }
     }
 
-    /// 全屏应用中是否启用（默认启用）。
+    /// 是否允许胶囊加入其他应用的全屏 Space（默认关闭）。
     @Published public var enableInFullScreen: Bool {
         didSet { defaults.set(enableInFullScreen, forKey: Keys.enableInFullScreen) }
     }
