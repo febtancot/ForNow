@@ -77,6 +77,7 @@ struct SettingsView: View {
                         HStack(spacing: 8) {
                             Image(systemName: display.hasNotch ? "laptopcomputer" : "display")
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("\(display.name) · \(display.positionLabel)")
                                 if display.id == defaultDisplayID {
@@ -95,10 +96,12 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .disabled(isOnlyEffectiveDisplay(display.id))
+                    .accessibilityHint(isOnlyEffectiveDisplay(display.id)
+                        ? "关闭后将隐藏所有常驻胶囊，仍可通过菜单栏图标或全局快捷键打开面板。"
+                        : "")
                 }
 
-                Text("可同时选择多块屏幕；所选屏幕断开时会临时回到默认屏幕。")
+                Text("可同时在多块屏幕上显示胶囊，也可以关闭全部胶囊。关闭全部胶囊后，仍可通过菜单栏图标或全局快捷键打开面板。所选屏幕全部断开时，胶囊会临时显示在默认屏幕上。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -111,9 +114,9 @@ struct SettingsView: View {
                     .buttonStyle(.link)
 
                     Spacer()
-                    Button("恢复默认") { settings.resetAttachedDisplays() }
+                    Button("恢复默认显示") { settings.resetAttachedDisplays() }
                         .buttonStyle(.link)
-                        .disabled(settings.attachedDisplayIDs.isEmpty)
+                        .disabled(settings.displayAttachmentSelection.isAutomatic)
                 }
             }
             Section("全局快捷键") {
@@ -210,8 +213,7 @@ struct SettingsView: View {
 
     private var effectiveConnectedDisplayIDs: Set<String> {
         let available = connectedDisplays.map(\.id)
-        return Set(DisplayAttachmentSelection.resolvedIDs(
-            configuredIDs: settings.attachedDisplayIDs,
+        return Set(settings.displayAttachmentSelection.resolvedIDs(
             availableIDs: available,
             defaultID: defaultDisplayID
         ))
@@ -221,21 +223,14 @@ struct SettingsView: View {
         Binding(
             get: { effectiveConnectedDisplayIDs.contains(displayID) },
             set: { enabled in
-                var selected = settings.attachedDisplayIDs.isEmpty
-                    ? effectiveConnectedDisplayIDs
-                    : settings.attachedDisplayIDs
-                if enabled {
-                    selected.insert(displayID)
-                } else {
-                    selected.remove(displayID)
-                }
-
-                guard !selected.isEmpty else { return }
-                if let defaultDisplayID, selected == Set([defaultDisplayID]) {
-                    settings.resetAttachedDisplays()
-                } else {
-                    settings.setAttachedDisplayIDs(selected)
-                }
+                settings.setDisplayAttachmentSelection(
+                    settings.displayAttachmentSelection.togglingDisplay(
+                        displayID,
+                        enabled: enabled,
+                        availableIDs: connectedDisplays.map(\.id),
+                        defaultID: defaultDisplayID
+                    )
+                )
             }
         )
     }

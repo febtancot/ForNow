@@ -59,7 +59,7 @@ final class AppSettingsTests: XCTestCase {
     func testDisplayAttachmentsDefaultToAutomaticMode() {
         let settings = AppSettings(defaults: makeDefaults())
 
-        XCTAssertTrue(settings.attachedDisplayIDs.isEmpty)
+        XCTAssertEqual(settings.displayAttachmentSelection, .automatic)
     }
 
     func testDisplayAttachmentsPersistAcrossReload() {
@@ -67,7 +67,10 @@ final class AppSettingsTests: XCTestCase {
         let settings = AppSettings(defaults: defaults)
         settings.setAttachedDisplayIDs(["display-a", "display-b"])
 
-        XCTAssertEqual(AppSettings(defaults: defaults).attachedDisplayIDs, ["display-a", "display-b"])
+        XCTAssertEqual(
+            AppSettings(defaults: defaults).displayAttachmentSelection,
+            .selected(["display-a", "display-b"])
+        )
     }
 
     func testResetDisplayAttachmentsRestoresAutomaticMode() {
@@ -77,8 +80,98 @@ final class AppSettingsTests: XCTestCase {
 
         settings.resetAttachedDisplays()
 
-        XCTAssertTrue(settings.attachedDisplayIDs.isEmpty)
-        XCTAssertTrue(AppSettings(defaults: defaults).attachedDisplayIDs.isEmpty)
+        XCTAssertEqual(settings.displayAttachmentSelection, .automatic)
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .automatic)
+    }
+
+    func testDisabledDisplayAttachmentsPersistAcrossReload() {
+        let defaults = makeDefaults()
+        let settings = AppSettings(defaults: defaults)
+
+        settings.setDisplayAttachmentSelection(.disabled)
+
+        XCTAssertEqual(settings.displayAttachmentSelection, .disabled)
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .disabled)
+    }
+
+    func testEmptyLegacyDisplayIDsSetterPreservesAutomaticMode() {
+        let defaults = makeDefaults()
+        let settings = AppSettings(defaults: defaults)
+        settings.setDisplayAttachmentSelection(.disabled)
+
+        settings.setAttachedDisplayIDs([])
+
+        XCTAssertEqual(settings.displayAttachmentSelection, .automatic)
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .automatic)
+    }
+
+    func testEmptySelectedDisplayAttachmentsNormalizeToDisabled() {
+        let defaults = makeDefaults()
+        let settings = AppSettings(defaults: defaults)
+
+        settings.setDisplayAttachmentSelection(.selected([]))
+
+        XCTAssertEqual(settings.displayAttachmentSelection, .disabled)
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .disabled)
+    }
+
+    func testLegacyEmptyDisplayAttachmentsRemainAutomatic() {
+        let defaults = makeDefaults()
+        defaults.set([], forKey: "settings.attachedDisplayIDs")
+
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .automatic)
+    }
+
+    func testLegacySelectedDisplayAttachmentsAreMigrated() {
+        let defaults = makeDefaults()
+        defaults.set(["display-b", "display-a"], forKey: "settings.attachedDisplayIDs")
+
+        XCTAssertEqual(
+            AppSettings(defaults: defaults).displayAttachmentSelection,
+            .selected(["display-a", "display-b"])
+        )
+    }
+
+    func testUnknownDisplayAttachmentModeUsesLegacyFallback() {
+        let defaults = makeDefaults()
+        defaults.set("unexpected", forKey: "settings.displayAttachmentMode")
+        defaults.set(["display-a"], forKey: "settings.attachedDisplayIDs")
+
+        XCTAssertEqual(
+            AppSettings(defaults: defaults).displayAttachmentSelection,
+            .selected(["display-a"])
+        )
+    }
+
+    func testUnknownDisplayAttachmentModeWithoutIDsFallsBackToAutomatic() {
+        let defaults = makeDefaults()
+        defaults.set("unexpected", forKey: "settings.displayAttachmentMode")
+
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .automatic)
+    }
+
+    func testAutomaticDisplayAttachmentModeIgnoresStaleIDs() {
+        let defaults = makeDefaults()
+        defaults.set("automatic", forKey: "settings.displayAttachmentMode")
+        defaults.set(["stale"], forKey: "settings.attachedDisplayIDs")
+
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .automatic)
+    }
+
+    func testDisabledDisplayAttachmentModeIgnoresStaleIDs() {
+        let defaults = makeDefaults()
+        defaults.set("disabled", forKey: "settings.displayAttachmentMode")
+        defaults.set(["stale"], forKey: "settings.attachedDisplayIDs")
+
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .disabled)
+    }
+
+    func testSelectedModeWithEmptyIDsFallsBackToAutomatic() {
+        let defaults = makeDefaults()
+        defaults.set("selected", forKey: "settings.displayAttachmentMode")
+        defaults.set([], forKey: "settings.attachedDisplayIDs")
+
+        XCTAssertEqual(AppSettings(defaults: defaults).displayAttachmentSelection, .automatic)
     }
 
     private func makeDefaults() -> UserDefaults {

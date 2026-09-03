@@ -42,6 +42,8 @@ final class NotchController: ObservableObject {
     let settings: AppSettings
 
     private var windows: [String: NotchWindow] = [:]
+    /// 全部胶囊关闭时，由菜单栏或快捷键按需创建；面板收起后立即移除。
+    private var transientDisplayIDs: Set<String> = []
     private var attachedDisplayOrder: [String] = []
     private let textPreview = TextPreviewController()
     private var globalClickMonitor: Any?
@@ -81,12 +83,12 @@ final class NotchController: ObservableObject {
             }
             .store(in: &cancellables)
 
-        settings.$attachedDisplayIDs
+        settings.$displayAttachmentSelection
             .dropFirst()
-            .sink { [weak self] displayIDs in
+            .sink { [weak self] selection in
                 // @Published 在属性写入前发送新值；必须直接使用回调参数，
-                // 此处若回读 settings 会拿到旧集合，导致设置开关变化后窗口不刷新。
-                self?.refreshAttachedWindows(configuredIDs: displayIDs)
+                // 此处若回读 settings 会拿到旧选择，导致设置开关变化后窗口不刷新。
+                self?.refreshAttachedWindows(selection: selection)
             }
             .store(in: &cancellables)
 
@@ -187,14 +189,20 @@ final class NotchController: ObservableObject {
 
     /// 展开指定屏幕上的面板；未指定时优先使用已选的刘海屏，其次主屏。
     func open(on requestedDisplayID: String? = nil) {
-        guard let displayID = resolvedOpenDisplayID(requestedDisplayID),
+        let displayID = resolvedOpenDisplayID(requestedDisplayID)
+            ?? prepareTransientWindowForOpen(requestedDisplayID: requestedDisplayID)
+        guard let displayID,
               !fullScreenCoveredDisplayIDs.contains(displayID),
               let window = windows[displayID] else { return }
         if isOpen, activeDisplayID == displayID { return }
 
         if let previousID = activeDisplayID, previousID != displayID {
-            setFrame(closedFrame(for: previousID), on: previousID, animate: settings.animations)
-            windows[previousID]?.orderFrontRegardless()
+            if transientDisplayIDs.contains(previousID) {
+                removeWindow(for: previousID)
+            } else {
+                setFrame(closedFrame(for: previousID), on: previousID, animate: settings.animations)
+                windows[previousID]?.orderFrontRegardless()
+            }
         }
 
         let wasOpen = isOpen
@@ -208,10 +216,16 @@ final class NotchController: ObservableObject {
         if !wasOpen { installMonitors() }
     }
 
-    func close() {
+    func close(removingActiveWindow: Bool = false) {
         guard isOpen else { return }
         if resizeStartWidth != nil { endPanelResize() }
         let closingDisplayID = activeDisplayID
+        let shouldRemoveWindow = removingActiveWindow
+            || (closingDisplayID.map(transientDisplayIDs.contains) ?? false)
+        if shouldRemoveWindow, let closingDisplayID {
+            // 先隐藏临时窗口，再发布收起状态，避免 ClosedPillView 短暂闪现。
+            windows[closingDisplayID]?.orderOut(nil)
+        }
         isOpen = false
         activeDisplayID = nil
         isDropTargeted = false
@@ -223,11 +237,15 @@ final class NotchController: ObservableObject {
         selection.removeAll()
         isShowingTrash = false
         if let displayID = closingDisplayID {
-            setFrame(closedFrame(for: displayID), on: displayID, animate: settings.animations)
-            if fullScreenCoveredDisplayIDs.contains(displayID) {
-                windows[displayID]?.orderOut(nil)
+            if shouldRemoveWindow {
+                removeWindow(for: displayID)
             } else {
-                windows[displayID]?.orderFrontRegardless()
+                setFrame(closedFrame(for: displayID), on: displayID, animate: settings.animations)
+                if fullScreenCoveredDisplayIDs.contains(displayID) {
+                    windows[displayID]?.orderOut(nil)
+                } else {
+                    windows[displayID]?.orderFrontRegardless()
+                }
             }
         }
     }
@@ -369,35 +387,46 @@ final class NotchController: ObservableObject {
 
     // MARK: - 几何
 
-    private func refreshAttachedWindows(configuredIDs: Set<String>? = nil) {
+    private func refreshAttachedWindows(selection: DisplayAttachmentSelection? = nil) {
         let screensByID = Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { screen in
             DisplayIdentity.identifier(for: screen).map { ($0, screen) }
         })
         let availableIDs = NSScreen.screens.compactMap(DisplayIdentity.identifier(for:))
         let defaultID = Self.defaultScreen(in: NSScreen.screens).flatMap(DisplayIdentity.identifier(for:))
-        let targetIDs = DisplayAttachmentSelection.resolvedIDs(
-            configuredIDs: configuredIDs ?? settings.attachedDisplayIDs,
+        let resolvedSelection = selection ?? settings.displayAttachmentSelection
+        let targetIDs = resolvedSelection.resolvedIDs(
             availableIDs: availableIDs,
             defaultID: defaultID
         )
 
-        if isOpen, let activeDisplayID, !targetIDs.contains(activeDisplayID) {
-            close()
+        var retainedIDs = Set(targetIDs)
+        if isOpen,
+           resolvedSelection.isDisabled,
+           let activeDisplayID,
+           transientDisplayIDs.contains(activeDisplayID),
+           availableIDs.contains(activeDisplayID) {
+            retainedIDs.insert(activeDisplayID)
+        }
+
+        if isOpen, let activeDisplayID, !retainedIDs.contains(activeDisplayID) {
+            close(removingActiveWindow: resolvedSelection.isDisabled)
         }
 
         let targetSet = Set(targetIDs)
-        for (displayID, window) in Array(windows) where !targetSet.contains(displayID) {
-            window.orderOut(nil)
-            window.contentView = nil
-            windows.removeValue(forKey: displayID)
+        for displayID in Array(windows.keys) where !retainedIDs.contains(displayID) {
+            removeWindow(for: displayID)
         }
 
         attachedDisplayOrder = targetIDs
         panelWidth = clampedPanelWidth(CGFloat(settings.panelWidth))
-        for displayID in targetIDs {
+        let layoutIDs = targetIDs + Array(retainedIDs.subtracting(targetSet))
+        for displayID in layoutIDs {
             guard let screen = screensByID[displayID] else { continue }
             let window = windows[displayID] ?? makeWindow(for: displayID)
             windows[displayID] = window
+            if targetSet.contains(displayID) {
+                transientDisplayIDs.remove(displayID)
+            }
             window.contentHeight = openHeight()
             let frame = isOpen(on: displayID)
                 ? metrics(for: screen).openFrame(width: panelWidth, height: window.contentHeight)
@@ -409,8 +438,39 @@ final class NotchController: ObservableObject {
                 window.orderFrontRegardless()
             }
         }
-        fullScreenCoveredDisplayIDs.formIntersection(targetSet)
+        fullScreenCoveredDisplayIDs.formIntersection(Set(availableIDs))
         fullScreenVisibilityMonitor?.refreshNow()
+    }
+
+    private func prepareTransientWindowForOpen(requestedDisplayID: String?) -> String? {
+        guard settings.displayAttachmentSelection.isDisabled else { return nil }
+
+        let screensByID = Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { screen in
+            DisplayIdentity.identifier(for: screen).map { ($0, screen) }
+        })
+        let availableIDs = NSScreen.screens.compactMap(DisplayIdentity.identifier(for:))
+        let defaultID = Self.defaultScreen(in: NSScreen.screens).flatMap(DisplayIdentity.identifier(for:))
+        guard let displayID = DisplayAttachmentSelection.transientPanelDisplayID(
+            requestedID: requestedDisplayID,
+            availableIDs: availableIDs,
+            defaultID: defaultID,
+            unavailableIDs: fullScreenCoveredDisplayIDs
+        ), let screen = screensByID[displayID] else { return nil }
+
+        let window = windows[displayID] ?? makeWindow(for: displayID)
+        windows[displayID] = window
+        transientDisplayIDs.insert(displayID)
+        window.contentHeight = openHeight()
+        window.setFrame(metrics(for: screen).closedFrame(), display: true, animate: false)
+        return displayID
+    }
+
+    private func removeWindow(for displayID: String) {
+        windows[displayID]?.orderOut(nil)
+        windows[displayID]?.contentView = nil
+        windows.removeValue(forKey: displayID)
+        transientDisplayIDs.remove(displayID)
+        attachedDisplayOrder.removeAll(where: { $0 == displayID })
     }
 
     private func makeWindow(for displayID: String) -> NotchWindow {
@@ -475,7 +535,7 @@ final class NotchController: ObservableObject {
     private func applyFullScreenCoverage(_ coveredDisplayIDs: Set<String>) {
         let nextCoveredIDs = allowsFullScreenPresentation
             ? []
-            : coveredDisplayIDs.intersection(windows.keys)
+            : coveredDisplayIDs
         guard nextCoveredIDs != fullScreenCoveredDisplayIDs else { return }
 
         let previousCoveredIDs = fullScreenCoveredDisplayIDs

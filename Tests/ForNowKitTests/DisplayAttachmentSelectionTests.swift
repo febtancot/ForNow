@@ -4,26 +4,61 @@ import XCTest
 final class DisplayAttachmentSelectionTests: XCTestCase {
     func testAutomaticModeUsesDefaultDisplay() {
         XCTAssertEqual(
-            DisplayAttachmentSelection.resolvedIDs(
-                configuredIDs: [], availableIDs: ["a", "b", "c"], defaultID: "b"
+            DisplayAttachmentSelection.automatic.resolvedIDs(
+                availableIDs: ["a", "b", "c"], defaultID: "b"
             ),
             ["b"]
         )
     }
 
+    func testAutomaticModeFallsBackWhenDefaultIsUnavailable() {
+        XCTAssertEqual(
+            DisplayAttachmentSelection.automatic.resolvedIDs(
+                availableIDs: ["a", "b"], defaultID: "missing"
+            ),
+            ["a"]
+        )
+    }
+
+    func testDisabledModeKeepsAllDisplaysHiddenAcrossAvailableDisplayChanges() {
+        XCTAssertTrue(
+            DisplayAttachmentSelection.disabled.resolvedIDs(
+                availableIDs: ["a", "b"], defaultID: "a"
+            ).isEmpty
+        )
+        XCTAssertTrue(
+            DisplayAttachmentSelection.disabled.resolvedIDs(
+                availableIDs: ["new"], defaultID: "new"
+            ).isEmpty
+        )
+    }
+
     func testMultipleConnectedSelectionsKeepSystemOrder() {
         XCTAssertEqual(
-            DisplayAttachmentSelection.resolvedIDs(
-                configuredIDs: ["a", "c"], availableIDs: ["c", "b", "a"], defaultID: "b"
+            DisplayAttachmentSelection.selected(["a", "c"]).resolvedIDs(
+                availableIDs: ["c", "b", "a"], defaultID: "b"
             ),
             ["c", "a"]
         )
     }
 
     func testDisconnectedSelectionsTemporarilyFallBackToDefault() {
+        let selection = DisplayAttachmentSelection.selected(["missing"])
         XCTAssertEqual(
-            DisplayAttachmentSelection.resolvedIDs(
-                configuredIDs: ["missing"], availableIDs: ["a", "b"], defaultID: "a"
+            selection.resolvedIDs(
+                availableIDs: ["a", "b"], defaultID: "a"
+            ),
+            ["a"]
+        )
+        XCTAssertEqual(
+            selection.resolvedIDs(
+                availableIDs: ["a", "missing"], defaultID: "a"
+            ),
+            ["missing"]
+        )
+        XCTAssertEqual(
+            selection.resolvedIDs(
+                availableIDs: ["a", "b"], defaultID: "stale"
             ),
             ["a"]
         )
@@ -31,9 +66,118 @@ final class DisplayAttachmentSelectionTests: XCTestCase {
 
     func testNoAvailableDisplaysProducesNoTargets() {
         XCTAssertTrue(
-            DisplayAttachmentSelection.resolvedIDs(
-                configuredIDs: ["missing"], availableIDs: [], defaultID: nil
+            DisplayAttachmentSelection.selected(["missing"]).resolvedIDs(
+                availableIDs: [], defaultID: nil
             ).isEmpty
+        )
+    }
+
+    func testTurningOffAutomaticDefaultDisablesAllCapsules() {
+        XCTAssertEqual(
+            DisplayAttachmentSelection.automatic.togglingDisplay(
+                "a", enabled: false, availableIDs: ["a", "b"], defaultID: "a"
+            ),
+            .disabled
+        )
+    }
+
+    func testTurningOffOneOfMultipleDisplaysKeepsTheOtherSelection() {
+        XCTAssertEqual(
+            DisplayAttachmentSelection.selected(["a", "b"]).togglingDisplay(
+                "a", enabled: false, availableIDs: ["a", "b"], defaultID: "a"
+            ),
+            .selected(["b"])
+        )
+    }
+
+    func testTurningOffLastConnectedSelectionIgnoresStaleDisplayIDs() {
+        XCTAssertEqual(
+            DisplayAttachmentSelection.selected(["a", "stale"]).togglingDisplay(
+                "a", enabled: false, availableIDs: ["a", "b"], defaultID: "a"
+            ),
+            .disabled
+        )
+    }
+
+    func testTurningOnDisplayFromDisabledSelectsOnlyThatDisplay() {
+        XCTAssertEqual(
+            DisplayAttachmentSelection.disabled.togglingDisplay(
+                "b", enabled: true, availableIDs: ["a", "b"], defaultID: "a"
+            ),
+            .selected(["b"])
+        )
+    }
+
+    func testDisplayTogglesNormalizeBackToAutomaticDefault() {
+        XCTAssertEqual(
+            DisplayAttachmentSelection.disabled.togglingDisplay(
+                "a", enabled: true, availableIDs: ["a", "b"], defaultID: "a"
+            ),
+            .automatic
+        )
+        XCTAssertEqual(
+            DisplayAttachmentSelection.selected(["a", "b"]).togglingDisplay(
+                "b", enabled: false, availableIDs: ["a", "b"], defaultID: "a"
+            ),
+            .automatic
+        )
+    }
+
+    func testTransientPanelPrefersRequestedThenDefaultAvailableDisplay() {
+        XCTAssertEqual(
+            DisplayAttachmentSelection.transientPanelDisplayID(
+                requestedID: "b",
+                availableIDs: ["a", "b", "c"],
+                defaultID: "a",
+                unavailableIDs: []
+            ),
+            "b"
+        )
+        XCTAssertEqual(
+            DisplayAttachmentSelection.transientPanelDisplayID(
+                requestedID: "missing",
+                availableIDs: ["a", "b", "c"],
+                defaultID: "a",
+                unavailableIDs: []
+            ),
+            "a"
+        )
+        XCTAssertEqual(
+            DisplayAttachmentSelection.transientPanelDisplayID(
+                requestedID: nil,
+                availableIDs: ["a", "b", "c"],
+                defaultID: "a",
+                unavailableIDs: ["a"]
+            ),
+            "b"
+        )
+        XCTAssertEqual(
+            DisplayAttachmentSelection.transientPanelDisplayID(
+                requestedID: nil,
+                availableIDs: ["a", "b", "c"],
+                defaultID: "missing",
+                unavailableIDs: ["a"]
+            ),
+            "b"
+        )
+    }
+
+    func testTransientPanelReturnsNilWhenNoDisplayCanPresentIt() {
+        XCTAssertNil(
+            DisplayAttachmentSelection.transientPanelDisplayID(
+                requestedID: nil,
+                availableIDs: ["a", "b"],
+                defaultID: "a",
+                unavailableIDs: ["a", "b"]
+            )
+        )
+        XCTAssertNil(
+            DisplayAttachmentSelection.transientPanelDisplayID(
+                requestedID: nil,
+                availableIDs: [],
+                defaultID: nil,
+                unavailableIDs: []
+            )
         )
     }
 }

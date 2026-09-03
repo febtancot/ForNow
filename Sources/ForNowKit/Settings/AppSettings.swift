@@ -20,7 +20,11 @@ public final class AppSettings: ObservableObject {
         self.animations = defaults.object(forKey: Keys.animations) as? Bool ?? true
         let storedPanelWidth = defaults.object(forKey: Keys.panelWidth).map { _ in defaults.double(forKey: Keys.panelWidth) }
         self.panelWidth = Self.clampedPanelWidth(storedPanelWidth ?? Self.defaultPanelWidth)
-        self.attachedDisplayIDs = Set(defaults.stringArray(forKey: Keys.attachedDisplayIDs) ?? [])
+        let storedDisplayIDs = Set(defaults.stringArray(forKey: Keys.attachedDisplayIDs) ?? [])
+        self.displayAttachmentSelection = Self.loadDisplayAttachmentSelection(
+            mode: defaults.string(forKey: Keys.displayAttachmentMode),
+            storedDisplayIDs: storedDisplayIDs
+        )
         self.hotKey = GlobalHotKey.load(from: defaults) ?? .default
     }
 
@@ -53,17 +57,46 @@ public final class AppSettings: ObservableObject {
         setPanelWidth(Self.defaultPanelWidth)
     }
 
-    /// 用户明确选择的小药丸吸附屏幕。空集合表示自动模式：优先带刘海的屏幕，
-    /// 否则使用主屏幕。显示器断开时保留其 id，重新接入后自动恢复。
-    @Published public private(set) var attachedDisplayIDs: Set<String>
+    /// 收起态胶囊的显示器选择。默认自动选择一块屏幕，也可明确选择多块或全部关闭。
+    /// 指定显示器断开时仍保留其 id，重新接入后自动恢复。
+    @Published public private(set) var displayAttachmentSelection: DisplayAttachmentSelection
+
+    /// 兼容既有调用方的已选显示器视图。自动模式与全部关闭均没有明确选择的 ID；
+    /// 需要区分这两种状态时应读取 `displayAttachmentSelection`。
+    public var attachedDisplayIDs: Set<String> {
+        displayAttachmentSelection.selectedDisplayIDs
+    }
 
     public func setAttachedDisplayIDs(_ displayIDs: Set<String>) {
-        attachedDisplayIDs = displayIDs
-        defaults.set(displayIDs.sorted(), forKey: Keys.attachedDisplayIDs)
+        // 保留旧 API 语义：空集合表示恢复自动默认。明确全关应使用 `.disabled`。
+        setDisplayAttachmentSelection(displayIDs.isEmpty ? .automatic : .selected(displayIDs))
+    }
+
+    public func setDisplayAttachmentSelection(_ selection: DisplayAttachmentSelection) {
+        let normalizedSelection: DisplayAttachmentSelection
+        if case let .selected(displayIDs) = selection, displayIDs.isEmpty {
+            normalizedSelection = .disabled
+        } else {
+            normalizedSelection = selection
+        }
+
+        displayAttachmentSelection = normalizedSelection
+        switch normalizedSelection {
+        case .automatic:
+            defaults.set(DisplayAttachmentMode.automatic.rawValue, forKey: Keys.displayAttachmentMode)
+            defaults.set([], forKey: Keys.attachedDisplayIDs)
+        case let .selected(displayIDs):
+            // 先保存选择，再切换模式；若进程在两次写入之间结束，旧模式仍会安全生效。
+            defaults.set(displayIDs.sorted(), forKey: Keys.attachedDisplayIDs)
+            defaults.set(DisplayAttachmentMode.selected.rawValue, forKey: Keys.displayAttachmentMode)
+        case .disabled:
+            defaults.set(DisplayAttachmentMode.disabled.rawValue, forKey: Keys.displayAttachmentMode)
+            defaults.set([], forKey: Keys.attachedDisplayIDs)
+        }
     }
 
     public func resetAttachedDisplays() {
-        setAttachedDisplayIDs([])
+        setDisplayAttachmentSelection(.automatic)
     }
 
     @Published public var hotKey: GlobalHotKey {
@@ -77,6 +110,34 @@ public final class AppSettings: ObservableObject {
         static let animations = "settings.animations"
         static let panelWidth = "settings.panelWidth"
         static let attachedDisplayIDs = "settings.attachedDisplayIDs"
+        static let displayAttachmentMode = "settings.displayAttachmentMode"
+    }
+
+    private enum DisplayAttachmentMode: String {
+        case automatic
+        case selected
+        case disabled
+    }
+
+    private static func loadDisplayAttachmentSelection(
+        mode: String?,
+        storedDisplayIDs: Set<String>
+    ) -> DisplayAttachmentSelection {
+        if let storedMode = mode.flatMap(DisplayAttachmentMode.init(rawValue:)) {
+            switch storedMode {
+            case .automatic:
+                return .automatic
+            case .selected:
+                // selected + 空数组只可能来自不完整或损坏的写入，安全回退到默认屏。
+                return storedDisplayIDs.isEmpty ? .automatic : .selected(storedDisplayIDs)
+            case .disabled:
+                return .disabled
+            }
+        }
+
+        // 旧版本没有 mode key：缺少或为空的 ID 集合原本都表示自动模式。
+        // 未知 mode 同样按旧值回退，避免静默隐藏全部胶囊。
+        return storedDisplayIDs.isEmpty ? .automatic : .selected(storedDisplayIDs)
     }
 
     private static func clampedPanelWidth(_ width: Double) -> Double {
