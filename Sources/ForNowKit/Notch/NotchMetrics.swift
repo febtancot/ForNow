@@ -26,6 +26,13 @@ public struct NotchMetrics: Equatable, Sendable {
             self.notchWidth = screenFrame.width - left - right
             self.notchHeight = safeAreaTop > 0 ? safeAreaTop : 32
             self.attachmentTopY = screenFrame.maxY
+        } else if safeAreaTop > 0 {
+            // 屏幕重配置期间 auxiliary 区域可能晚于 safeAreaInsets 就绪。
+            // 仍按刘海屏保留中央最小热区，避免透明入口短暂消失。
+            self.hasNotch = true
+            self.notchWidth = 0
+            self.notchHeight = safeAreaTop
+            self.attachmentTopY = screenFrame.maxY
         } else {
             self.hasNotch = false
             self.notchWidth = 0

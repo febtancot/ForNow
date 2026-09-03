@@ -3,7 +3,8 @@ import Foundation
 /// 用户对收起态胶囊所在显示器的选择。
 ///
 /// `automatic` 与 `disabled` 必须是两个独立状态：前者让首次使用时默认显示一个
-/// 胶囊，后者表示用户明确关闭了所有显示器上的胶囊。
+/// 胶囊，后者表示用户明确关闭了所有显示器上的视觉胶囊。`disabled` 不关闭刘海
+/// 区域本身的点击和拖入入口。
 public enum DisplayAttachmentSelection: Equatable, Sendable {
     case automatic
     case selected(Set<String>)
@@ -43,6 +44,18 @@ public enum DisplayAttachmentSelection: Equatable, Sendable {
         case .disabled:
             return []
         }
+    }
+
+    /// 返回不显示胶囊、但仍需保留点击和拖入能力的刘海屏幕。
+    ///
+    /// 只有明确关闭全部视觉胶囊时才需要这些透明热区；自动或指定屏幕模式已有
+    /// 常规胶囊窗口承载交互。
+    public func hiddenNotchTriggerIDs(
+        availableIDs: [String],
+        notchedIDs: Set<String>
+    ) -> [String] {
+        guard isDisabled else { return [] }
+        return availableIDs.filter(notchedIDs.contains)
     }
 
     /// 返回用户切换一块已连接显示器后的规范化选择。

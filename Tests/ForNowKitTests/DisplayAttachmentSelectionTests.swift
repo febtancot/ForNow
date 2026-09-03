@@ -33,6 +33,43 @@ final class DisplayAttachmentSelectionTests: XCTestCase {
         )
     }
 
+    func testDisabledModeKeepsHiddenTriggersOnNotchedDisplays() {
+        XCTAssertEqual(
+            DisplayAttachmentSelection.disabled.hiddenNotchTriggerIDs(
+                availableIDs: ["external-a", "notch", "external-b", "notch-2"],
+                notchedIDs: ["notch", "notch-2"]
+            ),
+            ["notch", "notch-2"]
+        )
+        XCTAssertTrue(
+            DisplayAttachmentSelection.disabled.hiddenNotchTriggerIDs(
+                availableIDs: ["external-a", "external-b"],
+                notchedIDs: []
+            ).isEmpty
+        )
+        XCTAssertEqual(
+            DisplayAttachmentSelection.disabled.hiddenNotchTriggerIDs(
+                availableIDs: ["external", "notch"],
+                notchedIDs: ["notch", "disconnected-notch"]
+            ),
+            ["notch"]
+        )
+    }
+
+    func testVisibleCapsuleModesDoNotCreateHiddenNotchTriggers() {
+        for selection in [
+            DisplayAttachmentSelection.automatic,
+            .selected(["external"])
+        ] {
+            XCTAssertTrue(
+                selection.hiddenNotchTriggerIDs(
+                    availableIDs: ["notch", "external"],
+                    notchedIDs: ["notch"]
+                ).isEmpty
+            )
+        }
+    }
+
     func testMultipleConnectedSelectionsKeepSystemOrder() {
         XCTAssertEqual(
             DisplayAttachmentSelection.selected(["a", "c"]).resolvedIDs(

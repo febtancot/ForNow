@@ -12,11 +12,25 @@ final class NotchMetricsTests: XCTestCase {
         XCTAssertEqual(m.notchHeight, 38)
     }
 
-    func testNoNotchWhenAuxAreasMissing() {
+    func testNoNotchWhenSafeAreaAndAuxAreasAreMissing() {
         let m = NotchMetrics(screenFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
                              safeAreaTop: 0, auxLeftWidth: nil, auxRightWidth: nil)
         XCTAssertFalse(m.hasNotch)
         XCTAssertEqual(m.notchWidth, 0)
+    }
+
+    func testSafeAreaKeepsMinimumNotchTriggerBeforeAuxAreasAreAvailable() {
+        let m = NotchMetrics(
+            screenFrame: notchScreen,
+            safeAreaTop: 38,
+            auxLeftWidth: nil,
+            auxRightWidth: nil
+        )
+
+        XCTAssertTrue(m.hasNotch)
+        XCTAssertEqual(m.closedFrame().width, 160)
+        XCTAssertEqual(m.closedFrame().height, 64)
+        XCTAssertEqual(m.closedFrame().maxY, notchScreen.maxY)
     }
 
     func testOpenFrameIsHorizontallyCentredAndTopAligned() {

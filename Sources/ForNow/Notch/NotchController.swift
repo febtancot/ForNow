@@ -42,8 +42,12 @@ final class NotchController: ObservableObject {
     let settings: AppSettings
 
     private var windows: [String: NotchWindow] = [:]
-    /// 全部胶囊关闭时，由菜单栏或快捷键按需创建；面板收起后立即移除。
+    /// 没有可用持久窗口时，由菜单栏或快捷键按需创建；面板收起后立即移除。
     private var transientDisplayIDs: Set<String> = []
+    /// 视觉胶囊全部关闭时，仍在刘海屏保留点击与拖入所需的透明热区。
+    private var hiddenNotchTriggerDisplayIDs: Set<String> = []
+    /// 独立发布视觉角色，确保复用同一窗口切换为透明热区时 ClosedPillView 会重绘。
+    @Published private var visibleCapsuleDisplayIDs: Set<String> = []
     private var attachedDisplayOrder: [String] = []
     private let textPreview = TextPreviewController()
     private var globalClickMonitor: Any?
@@ -187,6 +191,10 @@ final class NotchController: ObservableObject {
         isOpen && activeDisplayID == displayID
     }
 
+    func showsClosedCapsule(on displayID: String) -> Bool {
+        visibleCapsuleDisplayIDs.contains(displayID)
+    }
+
     /// 展开指定屏幕上的面板；未指定时优先使用已选的刘海屏，其次主屏。
     func open(on requestedDisplayID: String? = nil) {
         let displayID = resolvedOpenDisplayID(requestedDisplayID)
@@ -201,6 +209,7 @@ final class NotchController: ObservableObject {
                 removeWindow(for: previousID)
             } else {
                 setFrame(closedFrame(for: previousID), on: previousID, animate: settings.animations)
+                windows[previousID]?.hasShadow = !hiddenNotchTriggerDisplayIDs.contains(previousID)
                 windows[previousID]?.orderFrontRegardless()
             }
         }
@@ -212,6 +221,7 @@ final class NotchController: ObservableObject {
         panelWidth = clampedPanelWidth(CGFloat(settings.panelWidth))
         window.contentHeight = openHeight()
         setFrame(openFrame(for: displayID), on: displayID, animate: settings.animations)
+        window.hasShadow = true
         window.makeKeyAndOrderFront(nil)
         if !wasOpen { installMonitors() }
     }
@@ -241,6 +251,7 @@ final class NotchController: ObservableObject {
                 removeWindow(for: displayID)
             } else {
                 setFrame(closedFrame(for: displayID), on: displayID, animate: settings.animations)
+                windows[displayID]?.hasShadow = !hiddenNotchTriggerDisplayIDs.contains(displayID)
                 if fullScreenCoveredDisplayIDs.contains(displayID) {
                     windows[displayID]?.orderOut(nil)
                 } else {
@@ -394,12 +405,26 @@ final class NotchController: ObservableObject {
         let availableIDs = NSScreen.screens.compactMap(DisplayIdentity.identifier(for:))
         let defaultID = Self.defaultScreen(in: NSScreen.screens).flatMap(DisplayIdentity.identifier(for:))
         let resolvedSelection = selection ?? settings.displayAttachmentSelection
-        let targetIDs = resolvedSelection.resolvedIDs(
+        let capsuleTargetIDs = resolvedSelection.resolvedIDs(
             availableIDs: availableIDs,
             defaultID: defaultID
         )
+        let notchedIDs = Set(screensByID.compactMap { displayID, screen in
+            metrics(for: screen).hasNotch ? displayID : nil
+        })
+        let hiddenTriggerIDs = resolvedSelection.hiddenNotchTriggerIDs(
+            availableIDs: availableIDs,
+            notchedIDs: notchedIDs
+        )
+        let previousHiddenTriggerIDs = hiddenNotchTriggerDisplayIDs
+        hiddenNotchTriggerDisplayIDs = Set(hiddenTriggerIDs)
+        let nextVisibleCapsuleIDs = Set(capsuleTargetIDs)
+        if visibleCapsuleDisplayIDs != nextVisibleCapsuleIDs {
+            visibleCapsuleDisplayIDs = nextVisibleCapsuleIDs
+        }
+        let persistentWindowIDs = capsuleTargetIDs + hiddenTriggerIDs
 
-        var retainedIDs = Set(targetIDs)
+        var retainedIDs = Set(persistentWindowIDs)
         if isOpen,
            resolvedSelection.isDisabled,
            let activeDisplayID,
@@ -409,22 +434,23 @@ final class NotchController: ObservableObject {
         }
 
         if isOpen, let activeDisplayID, !retainedIDs.contains(activeDisplayID) {
-            close(removingActiveWindow: resolvedSelection.isDisabled)
+            close(removingActiveWindow: resolvedSelection.isDisabled
+                || previousHiddenTriggerIDs.contains(activeDisplayID))
         }
 
-        let targetSet = Set(targetIDs)
+        let persistentWindowSet = Set(persistentWindowIDs)
         for displayID in Array(windows.keys) where !retainedIDs.contains(displayID) {
             removeWindow(for: displayID)
         }
 
-        attachedDisplayOrder = targetIDs
+        attachedDisplayOrder = capsuleTargetIDs
         panelWidth = clampedPanelWidth(CGFloat(settings.panelWidth))
-        let layoutIDs = targetIDs + Array(retainedIDs.subtracting(targetSet))
+        let layoutIDs = persistentWindowIDs + Array(retainedIDs.subtracting(persistentWindowSet))
         for displayID in layoutIDs {
             guard let screen = screensByID[displayID] else { continue }
             let window = windows[displayID] ?? makeWindow(for: displayID)
             windows[displayID] = window
-            if targetSet.contains(displayID) {
+            if persistentWindowSet.contains(displayID) {
                 transientDisplayIDs.remove(displayID)
             }
             window.contentHeight = openHeight()
@@ -432,6 +458,8 @@ final class NotchController: ObservableObject {
                 ? metrics(for: screen).openFrame(width: panelWidth, height: window.contentHeight)
                 : metrics(for: screen).closedFrame()
             window.setFrame(frame, display: true, animate: false)
+            window.hasShadow = isOpen(on: displayID)
+                || !hiddenNotchTriggerDisplayIDs.contains(displayID)
             if fullScreenCoveredDisplayIDs.contains(displayID) {
                 window.orderOut(nil)
             } else {
@@ -462,6 +490,7 @@ final class NotchController: ObservableObject {
         transientDisplayIDs.insert(displayID)
         window.contentHeight = openHeight()
         window.setFrame(metrics(for: screen).closedFrame(), display: true, animate: false)
+        window.hasShadow = false
         return displayID
     }
 
@@ -502,6 +531,10 @@ final class NotchController: ObservableObject {
             !fullScreenCoveredDisplayIDs.contains(id)
                 && (screen(for: id)?.safeAreaInsets.top ?? 0) > 0
         }) { return notchedID }
+        if let hiddenNotchID = NSScreen.screens.compactMap(DisplayIdentity.identifier(for:)).first(where: { id in
+            hiddenNotchTriggerDisplayIDs.contains(id)
+                && !fullScreenCoveredDisplayIDs.contains(id)
+        }) { return hiddenNotchID }
         if let mainID = NSScreen.main.flatMap(DisplayIdentity.identifier(for:)),
            windows[mainID] != nil,
            !fullScreenCoveredDisplayIDs.contains(mainID) {

@@ -23,8 +23,8 @@ struct NotchRootView: View {
     }
 }
 
-/// 收起状态：整个刘海区域都可点击/接收拖入；胶囊仅作视觉提示，
-/// 鼠标移到刘海任意位置即高亮。点击打开；拖入内容靠近时自动展开。
+/// 收起状态：整个刘海区域都可点击/接收拖入；胶囊仅作可选的视觉提示。
+/// 即使设置关闭全部胶囊，刘海屏仍保留透明命中层。点击打开；拖入内容靠近时自动展开。
 struct ClosedPillView: View {
     @EnvironmentObject private var controller: NotchController
     @EnvironmentObject private var store: StashStore
@@ -33,18 +33,21 @@ struct ClosedPillView: View {
 
     var body: some View {
         let hasNotch = controller.displayHasNotch(displayID)
+        let showsCapsule = controller.showsClosedCapsule(on: displayID)
         ZStack {
             // 铺满整个窗口（= 刘海区域）的命中层。用极低不透明度而非 Color.clear，
             // 因为 Color.clear 只参与悬停、不参与点击命中（点了没反应的根因）。
             Color.white.opacity(0.001)
-            ClosedCapsuleBar(displayID: displayID, hovering: hovering)
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: hasNotch ? .bottom : .top
-                )
-                .padding(.top, hasNotch ? 0 : 2)
-                .padding(.bottom, hasNotch ? 2 : 0)
+            if showsCapsule {
+                ClosedCapsuleBar(displayID: displayID, hovering: hovering)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: hasNotch ? .bottom : .top
+                    )
+                    .padding(.top, hasNotch ? 0 : 2)
+                    .padding(.bottom, hasNotch ? 2 : 0)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -57,6 +60,7 @@ struct ClosedPillView: View {
             controller.importProviders(providers)
             return true
         }
+        .accessibilityHidden(!showsCapsule)
     }
 }
 
