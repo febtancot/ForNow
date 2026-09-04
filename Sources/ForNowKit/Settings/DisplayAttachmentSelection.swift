@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// 用户对收起态胶囊所在显示器的选择。
 ///
@@ -111,6 +112,27 @@ public enum DisplayAttachmentSelection: Equatable, Sendable {
             return defaultID
         }
         return availableIDs.first(where: { !unavailableIDs.contains($0) })
+    }
+
+    /// 按系统显示器顺序返回包含给定全局坐标的显示器 ID。
+    /// `NSEvent.mouseLocation` 与 `NSScreen.frame` 都使用 AppKit 的全局坐标系。
+    public static func displayID(
+        at point: CGPoint,
+        orderedDisplayFrames: [(id: String, frame: CGRect)]
+    ) -> String? {
+        orderedDisplayFrames.first(where: { $0.frame.contains(point) })?.id
+    }
+
+    /// 快捷键严格使用鼠标所在屏幕；屏幕已断开或被全屏策略屏蔽时不回退到其他屏幕。
+    public static func shortcutPanelDisplayID(
+        requestedID: String?,
+        availableIDs: [String],
+        unavailableIDs: Set<String>
+    ) -> String? {
+        guard let requestedID,
+              availableIDs.contains(requestedID),
+              !unavailableIDs.contains(requestedID) else { return nil }
+        return requestedID
     }
 
     private static func normalizedSelection(

@@ -70,7 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 全局快捷键：随设置变化重新注册（订阅会立即用当前值注册一次）。
         settings.$hotKey
             .sink { [weak self] key in
-                self?.hotKeyManager.register(key) { [weak self] in self?.notchController?.toggle() }
+                self?.hotKeyManager.register(key) { [weak self] in
+                    guard let self else { return }
+                    self.notchController?.toggleFromShortcut(on: self.displayIDUnderMouse())
+                }
             }
             .store(in: &cancellables)
 
@@ -115,5 +118,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         notch.open()
         notch.feedback(message)
+    }
+
+    private func displayIDUnderMouse() -> String? {
+        let displayFrames = NSScreen.screens.compactMap { screen in
+            DisplayIdentity.identifier(for: screen).map { (id: $0, frame: screen.frame) }
+        }
+        return DisplayAttachmentSelection.displayID(
+            at: NSEvent.mouseLocation,
+            orderedDisplayFrames: displayFrames
+        )
     }
 }

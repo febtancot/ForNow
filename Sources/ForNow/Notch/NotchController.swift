@@ -187,6 +187,15 @@ final class NotchController: ObservableObject {
 
     func toggle() { isOpen ? close() : open() }
 
+    /// 快捷键在面板关闭时优先跟随鼠标所在屏幕；面板已打开时仍按原行为收起。
+    func toggleFromShortcut(on requestedDisplayID: String?) {
+        if isOpen {
+            close()
+        } else {
+            open(on: requestedDisplayID, prioritizingRequestedDisplay: true)
+        }
+    }
+
     func isOpen(on displayID: String) -> Bool {
         isOpen && activeDisplayID == displayID
     }
@@ -197,8 +206,29 @@ final class NotchController: ObservableObject {
 
     /// 展开指定屏幕上的面板；未指定时优先使用已选的刘海屏，其次主屏。
     func open(on requestedDisplayID: String? = nil) {
-        let displayID = resolvedOpenDisplayID(requestedDisplayID)
-            ?? prepareTransientWindowForOpen(requestedDisplayID: requestedDisplayID)
+        open(on: requestedDisplayID, prioritizingRequestedDisplay: false)
+    }
+
+    private func open(
+        on requestedDisplayID: String?,
+        prioritizingRequestedDisplay: Bool
+    ) {
+        let displayID: String?
+        if prioritizingRequestedDisplay, requestedDisplayID != nil {
+            let availableIDs = NSScreen.screens.compactMap(DisplayIdentity.identifier(for:))
+            guard let shortcutDisplayID = DisplayAttachmentSelection.shortcutPanelDisplayID(
+                requestedID: requestedDisplayID,
+                availableIDs: availableIDs,
+                unavailableIDs: fullScreenCoveredDisplayIDs
+            ) else { return }
+            displayID = windows[shortcutDisplayID] != nil
+                ? shortcutDisplayID
+                : prepareTransientWindow(on: shortcutDisplayID)
+        } else {
+            displayID = resolvedOpenDisplayID(requestedDisplayID)
+                ?? prepareTransientWindowForOpen(requestedDisplayID: requestedDisplayID)
+        }
+
         guard let displayID,
               !fullScreenCoveredDisplayIDs.contains(displayID),
               let window = windows[displayID] else { return }
@@ -426,7 +456,6 @@ final class NotchController: ObservableObject {
 
         var retainedIDs = Set(persistentWindowIDs)
         if isOpen,
-           resolvedSelection.isDisabled,
            let activeDisplayID,
            transientDisplayIDs.contains(activeDisplayID),
            availableIDs.contains(activeDisplayID) {
@@ -473,9 +502,6 @@ final class NotchController: ObservableObject {
     private func prepareTransientWindowForOpen(requestedDisplayID: String?) -> String? {
         guard settings.displayAttachmentSelection.isDisabled else { return nil }
 
-        let screensByID = Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { screen in
-            DisplayIdentity.identifier(for: screen).map { ($0, screen) }
-        })
         let availableIDs = NSScreen.screens.compactMap(DisplayIdentity.identifier(for:))
         let defaultID = Self.defaultScreen(in: NSScreen.screens).flatMap(DisplayIdentity.identifier(for:))
         guard let displayID = DisplayAttachmentSelection.transientPanelDisplayID(
@@ -483,7 +509,14 @@ final class NotchController: ObservableObject {
             availableIDs: availableIDs,
             defaultID: defaultID,
             unavailableIDs: fullScreenCoveredDisplayIDs
-        ), let screen = screensByID[displayID] else { return nil }
+        ) else { return nil }
+
+        return prepareTransientWindow(on: displayID)
+    }
+
+    private func prepareTransientWindow(on displayID: String) -> String? {
+        guard !fullScreenCoveredDisplayIDs.contains(displayID),
+              let screen = screen(for: displayID) else { return nil }
 
         let window = windows[displayID] ?? makeWindow(for: displayID)
         windows[displayID] = window
