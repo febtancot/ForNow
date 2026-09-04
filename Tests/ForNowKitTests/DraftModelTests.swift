@@ -62,4 +62,82 @@ final class DraftModelTests: XCTestCase {
         await fulfillment(of: [expectation], timeout: 1)
         cancellable.cancel()
     }
+
+    @MainActor
+    func testAvailableWidthChangeRemeasuresExistingDraft() async throws {
+        let model = DraftModel(minimumMeasurementInterval: 0.5)
+        let text = String(repeating: "W", count: 30)
+
+        let initialLayout = XCTestExpectation(description: "initial layout")
+        var cancellable = model.draftDidChange.prefix(1).sink { initialLayout.fulfill() }
+        model.setFieldAvailableWidth(500)
+        model.draft = text
+        await fulfillment(of: [initialLayout], timeout: 1)
+        let wideHeight = model.fieldContentHeight
+
+        let narrowLayout = XCTestExpectation(description: "narrow layout")
+        cancellable = model.draftDidChange.prefix(1).sink { narrowLayout.fulfill() }
+        model.setFieldAvailableWidth(80)
+        await Task.yield()
+        XCTAssertEqual(model.fieldContentHeight, wideHeight, "连续宽度变化应先合并到尾沿")
+        await fulfillment(of: [narrowLayout], timeout: 1)
+        XCTAssertGreaterThan(model.fieldContentHeight, wideHeight)
+        XCTAssertEqual(
+            model.fieldContentHeight,
+            DraftTextMetrics.height(for: text, width: 80)
+        )
+
+        let wideLayout = XCTestExpectation(description: "wide layout")
+        cancellable = model.draftDidChange.prefix(1).sink { wideLayout.fulfill() }
+        model.setFieldAvailableWidth(500)
+        await fulfillment(of: [wideLayout], timeout: 1)
+        XCTAssertEqual(model.fieldContentHeight, wideHeight)
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func testInvalidTransientWidthsDoNotCollapseWrappedDraft() async throws {
+        let model = DraftModel()
+        let initialLayout = XCTestExpectation(description: "wrapped layout")
+        let cancellable = model.draftDidChange.prefix(1).sink { initialLayout.fulfill() }
+        model.setFieldAvailableWidth(80)
+        model.draft = String(repeating: "W", count: 30)
+        await fulfillment(of: [initialLayout], timeout: 1)
+        let wrappedHeight = model.fieldContentHeight
+
+        for width in [CGFloat.zero, -1, .nan, .infinity] {
+            model.setFieldAvailableWidth(width)
+        }
+        await Task.yield()
+
+        XCTAssertGreaterThan(wrappedHeight, DraftTextMetrics.lineHeight)
+        XCTAssertEqual(model.fieldContentHeight, wrappedHeight)
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func testRapidTextChangeGetsTrailingHeightMeasurement() async throws {
+        let model = DraftModel(minimumMeasurementInterval: 0.5)
+        let initialLayout = XCTestExpectation(description: "initial single-line layout")
+        var cancellable = model.draftDidChange.prefix(1).sink { initialLayout.fulfill() }
+        model.setFieldAvailableWidth(80)
+        model.draft = "A"
+        await fulfillment(of: [initialLayout], timeout: 1)
+        XCTAssertEqual(model.fieldContentHeight, DraftTextMetrics.lineHeight)
+
+        let wrapped = String(repeating: "W", count: 30)
+        let trailingLayout = XCTestExpectation(description: "trailing wrapped layout")
+        cancellable = model.draftDidChange.prefix(1).sink { trailingLayout.fulfill() }
+        model.draft = wrapped
+        await Task.yield()
+        XCTAssertEqual(model.fieldContentHeight, DraftTextMetrics.lineHeight)
+        await fulfillment(of: [trailingLayout], timeout: 1)
+
+        XCTAssertEqual(
+            model.fieldContentHeight,
+            DraftTextMetrics.height(for: wrapped, width: 80),
+            "节流窗口内跨行后停手，也应在尾沿使用最终文本重测"
+        )
+        cancellable.cancel()
+    }
 }

@@ -29,10 +29,22 @@ final class DraftTextMetricsTests: XCTestCase {
     }
 
     @MainActor
-    func testWidthDoesNotAffectCappedHeight() {
-        let long = String(repeating: "word ", count: 50_000)
-        let narrow = DraftTextMetrics.height(for: long, width: 40)
-        let wide = DraftTextMetrics.height(for: long, width: 320)
-        XCTAssertEqual(narrow, wide, "行数封顶后高度与宽度无关")
+    func testUnbrokenTextWrapsAccordingToAvailableWidth() {
+        let unbroken = String(repeating: "W", count: 30)
+        let narrow = DraftTextMetrics.lineCount(for: unbroken, width: 80)
+        let wide = DraftTextMetrics.lineCount(for: unbroken, width: 500)
+
+        XCTAssertGreaterThan(narrow, wide, "无空格长串应按可用宽度折行")
+        XCTAssertEqual(wide, 1)
+    }
+
+    @MainActor
+    func testUnbrokenTextIsCappedAtEightVisibleLines() {
+        let unbroken = String(repeating: "W", count: 10_000)
+        XCTAssertEqual(DraftTextMetrics.lineCount(for: unbroken, width: 80), 8)
+        XCTAssertEqual(
+            DraftTextMetrics.height(for: unbroken, width: 80),
+            DraftTextMetrics.lineHeight * 8
+        )
     }
 }

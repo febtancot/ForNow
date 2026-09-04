@@ -19,7 +19,8 @@ public enum DraftTextMetrics {
     /// 文本在给定宽度下排版的行数（≥1，最多 `maxLines` 行），供测试与高度计算用。
     public static func lineCount(for text: String, width: CGFloat) -> Int {
         guard width > 0 else { return 1 }
-        let truncated = text.count > measuredPrefix ? String(text.prefix(measuredPrefix)) : text
+        // 直接取前缀，避免先执行 O(全文长度) 的 `String.count`。
+        let truncated = String(text.prefix(measuredPrefix))
         let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0
         let layout = NSLayoutManager()

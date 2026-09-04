@@ -11,7 +11,7 @@ public final class DraftModel: ObservableObject {
     @Published public var draft = "" {
         didSet {
             guard draft != oldValue else { return }
-            scheduleDraftDidChange()
+            scheduleDraftDidChange(forceMeasurement: draft.isEmpty)
         }
     }
     /// 输入条是否持有键盘焦点。聚焦时 ⌘V/⌘A/Delete 等交给文本框原生处理。
@@ -28,37 +28,79 @@ public final class DraftModel: ObservableObject {
     @Published public private(set) var fieldContentHeight: CGFloat = DraftTextMetrics.lineHeight
 
     private var scheduled = false
-    /// 高度测量节流：最多每秒一次，值不变不发布（粘贴前后高度往往同为 8 行上限）。
+    private var requiresImmediateMeasurement = false
+    private var trailingMeasurementTask: Task<Void, Never>?
     private var lastMeasuredAt: Date?
+    private var fieldAvailableWidth: CGFloat = 324
+    private var hasReceivedFieldAvailableWidth = false
+    /// 连续输入时最多每 100ms 测量一次；尾沿任务保证停手后仍会使用最终文本重测。
+    private let minimumMeasurementInterval: TimeInterval
 
-    public init() {}
+    public init() {
+        self.minimumMeasurementInterval = 0.1
+    }
 
-    private func scheduleDraftDidChange() {
+    init(minimumMeasurementInterval: TimeInterval) {
+        self.minimumMeasurementInterval = max(minimumMeasurementInterval, 0)
+    }
+
+    /// 更新输入文本视口的真实宽度。宽度变化会触发重测，避免面板缩放或清空按钮出现后
+    /// 显示宽度与固定测量宽度不一致。
+    public func setFieldAvailableWidth(_ width: CGFloat) {
+        guard width.isFinite, width > 0,
+              abs(width - fieldAvailableWidth) >= 0.5 else { return }
+        let isFirstReportedWidth = !hasReceivedFieldAvailableWidth
+        fieldAvailableWidth = width
+        hasReceivedFieldAvailableWidth = true
+        // 首次拿到真实布局宽度立即测量；连续拖宽与按钮显隐仍遵守限频并保留尾沿。
+        scheduleDraftDidChange(forceMeasurement: isFirstReportedWidth)
+    }
+
+    private func scheduleDraftDidChange(forceMeasurement: Bool = false) {
+        if forceMeasurement {
+            requiresImmediateMeasurement = true
+        }
         guard !scheduled else { return }
         scheduled = true
         Task { [weak self] in
             await Task.yield()
             guard let self else { return }
             self.scheduled = false
-            // 先测量后广播：订阅方（窗口高度）读到的总是当前草稿对应的最新高度。
-            self.measureFieldHeight()
-            self.draftDidChange.send()
+            let forceMeasurement = self.requiresImmediateMeasurement
+            self.requiresImmediateMeasurement = false
+            self.measureAndPublishWhenDue(force: forceMeasurement)
         }
     }
 
-    private func measureFieldHeight() {
-        // 草稿清空（提交/清空按钮）是最终状态，必须立即测量到位；其余变化节流到每秒一次。
-        if !draft.isEmpty, let last = lastMeasuredAt, Date().timeIntervalSince(last) < 1 {
+    private func measureAndPublishWhenDue(force: Bool) {
+        let now = Date()
+        let elapsed = lastMeasuredAt.map { now.timeIntervalSince($0) }
+        let measurementIsDue = elapsed.map { $0 >= minimumMeasurementInterval } ?? true
+        if force || measurementIsDue {
+            trailingMeasurementTask?.cancel()
+            trailingMeasurementTask = nil
+            measureAndPublish(at: now)
             return
         }
-        lastMeasuredAt = Date()
-        let measured = DraftTextMetrics.height(for: draft, width: Self.measurementWidth)
+
+        let remaining = minimumMeasurementInterval
+            - (elapsed ?? minimumMeasurementInterval)
+        guard trailingMeasurementTask == nil else { return }
+        trailingMeasurementTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(remaining, 0) * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            self.trailingMeasurementTask = nil
+            self.measureAndPublish(at: Date())
+        }
+    }
+
+    private func measureAndPublish(at date: Date) {
+        lastMeasuredAt = date
+        let measured = DraftTextMetrics.height(for: draft, width: fieldAvailableWidth)
         if measured != fieldContentHeight {
             fieldContentHeight = measured
         }
+        // 先测量后广播：订阅方（窗口高度）读到的总是当前文本与宽度对应的高度。
+        draftDidChange.send()
     }
-
-    /// 输入条文本可用宽度：面板宽 − 左右 padding(28) − 图标(21) − 间距与清空按钮预留。
-    /// 取略窄值，窗口高度只多不少。
-    private static let measurementWidth: CGFloat = 324
 }

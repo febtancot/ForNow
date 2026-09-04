@@ -371,16 +371,30 @@ struct QuickEntryField: View {
                 .foregroundStyle(.secondary)
                 .font(.system(size: 13))
                 .padding(.top, 3)
-            ScrollView {
+            ScrollView(.vertical) {
                 TextField("快速录入：打字后回车暂存", text: $draftModel.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear
+                                .onAppear { reportFieldWidth(geometry.size.width) }
+                                .onChange(of: geometry.size.width) { _, width in
+                                    reportFieldWidth(width)
+                                }
+                        }
+                    }
                     .focused($focused)
                     .onSubmit { draftModel.onSubmit?() }
             }
             .frame(height: draftModel.fieldContentHeight, alignment: .top)
-            // 粘贴超长文本时输入条在定高框内滚动，系统显示滚动指示。
-            .scrollIndicators(.visible)
+            // 1–7 行隐藏 scroller，测量宽度与可见视口保持一致；8 行封顶后再显示并内部滚动。
+            .scrollIndicators(
+                draftModel.fieldContentHeight >= DraftTextMetrics.lineHeight * 8
+                    ? .visible
+                    : .hidden
+            )
             if !draftModel.draft.isEmpty {
                 Button { draftModel.draft = "" } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -396,6 +410,11 @@ struct QuickEntryField: View {
         .padding(.vertical, 10)
         .onDisappear { draftModel.isTyping = false }
         .onChange(of: focused) { draftModel.isTyping = focused }
+    }
+
+    private func reportFieldWidth(_ width: CGFloat) {
+        // plain TextField 与滚动视口边缘仍有少量 inset/像素取整差；略窄测量可避免临界行被裁掉。
+        draftModel.setFieldAvailableWidth(width - 4)
     }
 }
 
