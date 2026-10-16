@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                           updater: updaterModel.controller)
         status.onTogglePanel = { [weak notch] in notch?.toggle() }
         status.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
+        notch.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
 
         self.notchController = notch
         self.statusController = status

@@ -17,6 +17,7 @@ APP_NAME="ForNow"
 VOL_NAME="搁这儿"
 CONFIG="Release"
 DERIVED="$(pwd)/build"
+ENTITLEMENTS="$PWD/Sources/ForNow/Support/ForNow.entitlements"
 
 # 自动选用 Developer ID Application 证书；没有则回退 ad-hoc。
 SIGN_ID="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')"
@@ -36,10 +37,13 @@ if [ "$HARDEN" = 1 ]; then
   # --deep：递归重签嵌套二进制（Sparkle.framework 内的 Autoupdate/Updater.app
   # 出厂为 ad-hoc 签名，公证要求 Developer ID + 安全时间戳）。
   codesign --deep --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+  # 仅主 App 需要麦克风权限；单独重签，避免将此权限递归赋给 Sparkle 辅助程序。
+  codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGN_ID" "$APP"
 else
-  codesign --force --sign "-" "$APP"
+  codesign --force --entitlements "$ENTITLEMENTS" --sign "-" "$APP"
 fi
 codesign --verify --strict "$APP" && echo "    签名校验 OK"
+"$PWD/Scripts/verify_microphone_permissions.sh" "$APP"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist" 2>/dev/null || echo 0.0.0)"
 DIST="$(pwd)/dist"; mkdir -p "$DIST"

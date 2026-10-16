@@ -40,6 +40,8 @@ final class NotchController: ObservableObject {
 
     let store: StashStore
     let settings: AppSettings
+    /// 复用菜单栏入口的设置窗口打开与置前逻辑。
+    var onOpenSettings: (() -> Void)?
 
     private var windows: [String: NotchWindow] = [:]
     /// 没有可用持久窗口时，由菜单栏或快捷键按需创建；面板收起后立即移除。
@@ -256,7 +258,13 @@ final class NotchController: ObservableObject {
         if !wasOpen { installMonitors() }
     }
 
-    func close(removingActiveWindow: Bool = false) {
+    func openSettings() {
+        guard let onOpenSettings else { return }
+        close(preservingDraft: true)
+        onOpenSettings()
+    }
+
+    func close(removingActiveWindow: Bool = false, preservingDraft: Bool = false) {
         guard isOpen else { return }
         if resizeStartWidth != nil { endPanelResize() }
         let closingDisplayID = activeDisplayID
@@ -272,7 +280,8 @@ final class NotchController: ObservableObject {
         openedByDrag = false
         // 先移除键盘监听，避免清空草稿触发输入条重绘时仍在拦截按键。
         removeMonitors()
-        draftModel.draft = ""
+        // 从面板转去设置时保留尚未提交的文字，返回后可以继续输入。
+        if !preservingDraft { draftModel.draft = "" }
         draftModel.isTyping = false
         selection.removeAll()
         isShowingTrash = false

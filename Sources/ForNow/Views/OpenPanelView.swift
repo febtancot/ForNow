@@ -65,6 +65,15 @@ struct OpenPanelView: View {
             .foregroundStyle(.secondary)
             .help(controller.isShowingTrash ? "返回暂存" : "查看回收站")
             .accessibilityLabel(controller.isShowingTrash ? "返回暂存" : "回收站，\(store.trashCount) 项")
+            Button { controller.openSettings() } label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("设置…")
+            .accessibilityLabel("打开设置")
             Button { controller.close() } label: {
                 Image(systemName: "chevron.up")
             }

@@ -14,6 +14,8 @@ final class RecordingController: ObservableObject {
     private var recorder: AVAudioRecorder?
     private var tempURL: URL?
     private var ticker: Timer?
+    private var isRequestingPermission = false
+    private var isShowingPermissionAlert = false
 
     private static let stampFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -28,20 +30,46 @@ final class RecordingController: ObservableObject {
 
     /// 开始录音（首次会弹麦克风权限授权框）。
     func start() {
-        guard !isRecording else { return }
+        guard !isRecording, !isRequestingPermission, !isShowingPermissionAlert else { return }
         switch AVAudioApplication.shared.recordPermission {
         case .granted:
             begin()
         case .denied:
-            feedback("麦克风权限被拒，请在系统设置中允许")
+            showMicrophonePermissionAlert()
         case .undetermined:
+            isRequestingPermission = true
+            NSApp.activate(ignoringOtherApps: true)
             AVAudioApplication.requestRecordPermission { [weak self] granted in
                 Task { @MainActor in
-                    granted ? self?.begin() : self?.feedback("需要麦克风权限才能录音")
+                    guard let self else { return }
+                    self.isRequestingPermission = false
+                    if granted {
+                        self.begin()
+                    } else {
+                        self.showMicrophonePermissionAlert()
+                    }
                 }
             }
         @unknown default:
-            break
+            feedback("无法读取麦克风权限，请重新打开应用后重试")
+        }
+    }
+
+    private func showMicrophonePermissionAlert() {
+        guard !isShowingPermissionAlert else { return }
+        isShowingPermissionAlert = true
+        defer { isShowingPermissionAlert = false }
+
+        let alert = NSAlert()
+        alert.messageText = "需要麦克风权限才能录音"
+        alert.informativeText = "请在系统设置的「隐私与安全性 → 麦克风」中允许「搁这儿」（ForNow）访问。允许后，回到应用再次点击录音。"
+        alert.addButton(withTitle: "打开系统设置")
+        alert.addButton(withTitle: "取消")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
+        if !NSWorkspace.shared.open(url) {
+            feedback("请手动打开系统设置 → 隐私与安全性 → 麦克风")
         }
     }
 

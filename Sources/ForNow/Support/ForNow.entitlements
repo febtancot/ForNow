@@ -5,5 +5,8 @@
 	<!-- MVP 不启用沙箱：简化文件访问、Apple 事件与全局快捷键。上架前再补 sandbox。 -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
+	<!-- Developer ID 发布包启用 Hardened Runtime，录音需要 Audio Input。 -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 </dict>
 </plist>
