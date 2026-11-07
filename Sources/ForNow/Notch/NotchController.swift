@@ -33,6 +33,7 @@ final class NotchController: ObservableObject {
     let draftModel = DraftModel()
     /// 面板内单实例音频播放器（播放/暂停、进度、拖动定位）。
     let audioPlayer = AudioPlaybackController()
+    lazy var transcriptions = AudioTranscriptionController(store: store)
     /// 录音状态机（mic 点击开始/停止，停止后音频入库）。
     lazy var recorder = RecordingController(store: store) { [weak self] message in
         self?.feedback(message)
@@ -1033,6 +1034,9 @@ final class NotchController: ObservableObject {
     func toggleRecording(on displayID: String? = nil) {
         if recorder.isRecording {
             if let item = recorder.stopAndStash() {
+                if settings.automaticallyTranscribeRecordings, item.transcription?.text == nil {
+                    transcribeAudio(item)
+                }
                 feedback("已录制 · \(item.durationText ?? "")")
                 open(on: displayID)
                 selection = [item.id]
@@ -1049,6 +1053,23 @@ final class NotchController: ObservableObject {
     }
 
     // MARK: - 面板内音频播放
+
+    func transcribeAudio(_ item: StashItem) {
+        transcriptions.enqueue(item.id, localeIdentifier: settings.resolvedTranscriptionLocaleIdentifier)
+    }
+
+    func previewTranscription(_ item: StashItem) {
+        guard let text = item.transcription?.text, !text.isEmpty else { return }
+        close(preservingDraft: true)
+        textPreview.show(title: "\(item.displayName) · 转写文字", text: text)
+    }
+
+    func copyTranscription(_ item: StashItem) {
+        guard let text = item.transcription?.text, !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        feedback("已复制转写文字")
+    }
 
     func toggleAudioPlayback(_ item: StashItem) {
         guard item.kind == .audio else { return }

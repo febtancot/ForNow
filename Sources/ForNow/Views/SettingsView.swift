@@ -12,10 +12,34 @@ struct SettingsView: View {
         self.onRefreshDisplays = onRefreshDisplays
     }
 
+    private var recordingTab: some View {
+        Form {
+            Section("本地转写") {
+                Toggle("录音完成后自动转写", isOn: $settings.automaticallyTranscribeRecordings)
+                Picker("转写语言", selection: $settings.transcriptionLocaleIdentifier) {
+                    Text("跟随系统语言").tag("")
+                    Text("中文（普通话）").tag("zh-CN")
+                    Text("中文（粤语）").tag("yue-CN")
+                    Text("English").tag("en-US")
+                }
+                Text("需要 macOS 26 及支持的设备和语言。首次使用可能联网下载语言模型；音频和转写文字保存在本机。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("按所选语言识别，不自动检测语言。转写失败时录音仍会保留，可在录音的右键菜单中重试。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+
     var body: some View {
         TabView {
             generalTab
                 .tabItem { Label("通用", systemImage: "gearshape") }
+            recordingTab
+                .tabItem { Label("录音", systemImage: "mic") }
             dayDropTab
                 .tabItem { Label("DayDrop", systemImage: "folder.badge.gearshape") }
             updateTab

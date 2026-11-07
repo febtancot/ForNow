@@ -26,6 +26,23 @@ public final class AppSettings: ObservableObject {
             storedDisplayIDs: storedDisplayIDs
         )
         self.hotKey = GlobalHotKey.load(from: defaults) ?? .default
+        self.automaticallyTranscribeRecordings = defaults.object(forKey: "automaticallyTranscribeRecordings") as? Bool ?? true
+        self.transcriptionLocaleIdentifier = defaults.string(forKey: "transcriptionLocaleIdentifier") ?? ""
+    }
+
+    @Published public var automaticallyTranscribeRecordings: Bool {
+        didSet { defaults.set(automaticallyTranscribeRecordings, forKey: "automaticallyTranscribeRecordings") }
+    }
+
+    /// 空字符串表示跟随系统首选语言，不表示自动检测音频语言。
+    @Published public var transcriptionLocaleIdentifier: String {
+        didSet { defaults.set(transcriptionLocaleIdentifier, forKey: "transcriptionLocaleIdentifier") }
+    }
+
+    public var resolvedTranscriptionLocaleIdentifier: String {
+        transcriptionLocaleIdentifier.isEmpty
+            ? (Locale.preferredLanguages.first ?? Locale.current.identifier)
+            : transcriptionLocaleIdentifier
     }
 
     @Published public var launchAtLogin: Bool {

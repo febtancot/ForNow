@@ -53,6 +53,13 @@ public final class StashStore: ObservableObject {
         trashItems.removeAll { activeIDs.contains($0.id) }
         if trashItems.count != countBeforeReconciliation { persistTrash() }
         purgeExpiredTrash()
+        // 进程退出后没有任务仍在运行；允许用户重试，避免永久显示「转写中」。
+        for item in items + trashItems.map(\.item) {
+            if var transcription = item.transcription, transcription.status.isInProgress {
+                transcription.status = .interrupted
+                setTranscription(transcription, for: item.id)
+            }
+        }
         if pinLockedItemsToTop() { persist() }
         backfillContentHashes()
         reconcileLegacyTextDropsMatchingTXTFiles()
@@ -99,6 +106,30 @@ public final class StashStore: ObservableObject {
     public func absoluteURL(for item: StashItem) -> URL? {
         guard let relativePath = item.relativePath else { return nil }
         return fileStorage.absoluteURL(for: relativePath)
+    }
+
+    public func audioItem(id: UUID) -> StashItem? {
+        (items.first { $0.id == id } ?? trashItems.first { $0.id == id }?.item)
+            .flatMap { $0.kind == .audio ? $0 : nil }
+    }
+
+    /// 后台完成时按 ID 更新最新副本，保留备注/锁定等并发编辑；不复活已删除项目。
+    @discardableResult
+    public func setTranscription(_ transcription: AudioTranscription, for id: UUID) -> Bool {
+        if let index = items.firstIndex(where: { $0.id == id && $0.kind == .audio }) {
+            items[index].transcription = transcription
+            persist()
+            return true
+        }
+        if let index = trashItems.firstIndex(where: { $0.id == id && $0.item.kind == .audio }) {
+            let entry = trashItems[index]
+            var item = entry.item
+            item.transcription = transcription
+            trashItems[index] = TrashedItem(item: item, trashedAt: entry.trashedAt)
+            persistTrash()
+            return true
+        }
+        return false
     }
 
     /// 若 URL 正是仓库中某个项目的受管文件/目录，则返回该项目。

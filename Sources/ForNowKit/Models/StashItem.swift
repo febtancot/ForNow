@@ -37,6 +37,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
     // MARK: 录音
     /// 录音时长（秒）。
     public var durationSeconds: Double?
+    public var transcription: AudioTranscription?
 
     public init(id: UUID = UUID(),
                 kind: StashItemKind,
@@ -53,7 +54,8 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
                 text: String? = nil,
                 urlString: String? = nil,
                 linkTitle: String? = nil,
-                durationSeconds: Double? = nil) {
+                durationSeconds: Double? = nil,
+                transcription: AudioTranscription? = nil) {
         self.id = id
         self.kind = kind
         self.displayName = displayName
@@ -70,6 +72,7 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
         self.urlString = urlString
         self.linkTitle = linkTitle
         self.durationSeconds = durationSeconds
+        self.transcription = transcription
     }
 
     /// 手写解码以兼容旧元数据：缺少 `locked`/`note`/`durationSeconds` 键时回退默认值，
@@ -92,13 +95,14 @@ public struct StashItem: Identifiable, Codable, Equatable, Sendable {
         urlString = try container.decodeIfPresent(String.self, forKey: .urlString)
         linkTitle = try container.decodeIfPresent(String.self, forKey: .linkTitle)
         durationSeconds = try container.decodeIfPresent(Double.self, forKey: .durationSeconds)
+        transcription = try container.decodeIfPresent(AudioTranscription.self, forKey: .transcription)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, kind, displayName, createdAt, locked, note
         case relativePath, byteSize, originalFileName, contentHash
         case pixelWidth, pixelHeight, text
-        case urlString, linkTitle, durationSeconds
+        case urlString, linkTitle, durationSeconds, transcription
     }
 }
 

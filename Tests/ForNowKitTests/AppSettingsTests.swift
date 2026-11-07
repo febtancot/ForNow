@@ -3,6 +3,19 @@ import XCTest
 
 @MainActor
 final class AppSettingsTests: XCTestCase {
+    func testTranscriptionDefaultsAndLanguagePersist() {
+        let defaults = makeDefaults()
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertTrue(settings.automaticallyTranscribeRecordings)
+        XCTAssertEqual(settings.transcriptionLocaleIdentifier, "")
+        XCTAssertFalse(settings.resolvedTranscriptionLocaleIdentifier.isEmpty)
+        settings.automaticallyTranscribeRecordings = false
+        settings.transcriptionLocaleIdentifier = "zh-CN"
+        let reloaded = AppSettings(defaults: defaults)
+        XCTAssertFalse(reloaded.automaticallyTranscribeRecordings)
+        XCTAssertEqual(reloaded.resolvedTranscriptionLocaleIdentifier, "zh-CN")
+    }
+
     func testFullScreenParticipationDefaultsToDisabled() {
         let settings = AppSettings(defaults: makeDefaults())
 

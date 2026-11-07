@@ -42,6 +42,26 @@ struct StashItemRow: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.primary.opacity(0.78))
                 }
+                if item.kind == .audio, let transcription = item.transcription {
+                    if let text = transcription.text, !text.isEmpty {
+                        Button { controller.previewTranscription(item) } label: {
+                            Label(text, systemImage: "text.alignleft")
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(.plain)
+                        .help("查看完整转写文字")
+                        .accessibilityLabel("查看转写文字：\(text)")
+                    }
+                    if transcription.status != .completed {
+                        Text(transcription.statusText)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .help(transcription.statusText)
+                    }
+                }
                 if isAudioActive {
                     activeAudioProgress
                 } else {
@@ -142,6 +162,18 @@ struct StashItemRow: View {
                 Label(audioPlayer.isPlaying && audioPlayer.isActive(item.id) ? "暂停" : "播放",
                       systemImage: audioPlayer.isPlaying && audioPlayer.isActive(item.id) ? "pause.fill" : "play.fill")
             }
+            if let text = item.transcription?.text, !text.isEmpty {
+                Button { controller.previewTranscription(item) } label: {
+                    Label("查看转写文字", systemImage: "text.alignleft")
+                }
+                Button { controller.copyTranscription(item) } label: {
+                    Label("复制转写文字", systemImage: "doc.on.doc")
+                }
+            }
+            Button { controller.transcribeAudio(item) } label: {
+                Label(item.transcription == nil ? "本地转写" : "重新转写", systemImage: "waveform.badge.magnifyingglass")
+            }
+            .disabled(item.transcription?.status.isInProgress == true)
         }
         if item.kind == .file || item.kind == .image || item.kind == .link {
             Button {
