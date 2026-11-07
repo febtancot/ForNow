@@ -50,15 +50,8 @@ spctl -a -t open --context context:primary-signature -vv "$DMG" >/dev/null \
 # ── 3. 组装部署目录（临时目录，站点源码 + updates，不污染源目录）───────────
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-for f in index.html 404.html styles.css script.js favicon.png apple-touch-icon.png og-image.png downloads _headers; do
-  [ -e "$SITE_SRC/$f" ] && cp -R "$SITE_SRC/$f" "$STAGE/"
-done
-mkdir -p "$STAGE/updates"
-
-# 历史 DMG 与 appcast 从站点源目录的 updates/ 延续（保持 delta 可用）。
-if [ -d "$SITE_SRC/updates" ]; then
-  cp -R "$SITE_SRC/updates/." "$STAGE/updates/"
-fi
+# 与官网部署共用资产清单，保留统计页面、Worker 和历史更新包。
+node "$SITE_SRC/tools/prepare-site.mjs" "$STAGE"
 
 # ── 4. 放入新 DMG + 发布说明（与 DMG 同名、.md，自动嵌入 appcast）──────────
 cp "$DMG" "$STAGE/updates/"
@@ -95,7 +88,7 @@ sed -i '' "s|下载 ForNow [0-9.]*|下载 ForNow ${VERSION}|g" "$STAGE/index.htm
 # 从临时目录（非 git 仓库）部署并显式指定 --branch main：否则 wrangler 会把
 # 当前 git 分支名当预览部署别名，生产域（fornow.liveby.app）不更新。
 echo "==> 部署到 Cloudflare Pages（项目 fornow，生产分支 main）"
-(cd "$STAGE" && npx --yes wrangler pages deploy . --project-name fornow --branch main)
+"$SITE_SRC/deploy.sh" "$STAGE"
 
 # ── 8. 把更新产物落回站点源目录（updates/ 与 downloads/，供下次发布延续）───
 mkdir -p "$SITE_SRC/updates"
